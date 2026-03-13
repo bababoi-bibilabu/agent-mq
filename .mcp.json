@@ -1,0 +1,6 @@
+{
+  "agent-mq": {
+    "command": "python3",
+    "args": ["${CLAUDE_PLUGIN_ROOT}/skills/mq/scripts/mcp_server.py"]
+  }
+}
