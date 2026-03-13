@@ -1,25 +1,8 @@
 """Tests for agent-mq core module."""
 
 import json
-import sys
-from pathlib import Path
-
-# Add scripts dir to path
-sys.path.insert(0, str(Path(__file__).parent.parent / "skills" / "mq" / "scripts"))
 
 import core
-
-
-def setup_function():
-    """Clean state before each test."""
-    for d in [core.REGISTRY_DIR, core.INBOX_DIR, core.DONE_DIR]:
-        if d.exists():
-            for f in d.rglob("*"):
-                if f.is_file():
-                    f.unlink()
-            for f in sorted(d.rglob("*"), reverse=True):
-                if f.is_dir():
-                    f.rmdir()
 
 
 def test_register():
@@ -285,3 +268,29 @@ def test_done_directory_receives_consumed():
     assert done_file.exists()
     data = json.loads(done_file.read_text())
     assert data["payload"] == "will be consumed"
+
+
+def test_path_traversal_register():
+    for bad_id in ["../etc/passwd", "foo/bar", "a\\b", "a\0b"]:
+        try:
+            core.register(bad_id)
+            assert False, f"Should have raised for {bad_id!r}"
+        except ValueError as e:
+            assert "Invalid session ID" in str(e)
+
+
+def test_path_traversal_recv():
+    try:
+        core.recv("../../etc")
+        assert False, "Should have raised"
+    except ValueError:
+        pass
+
+
+def test_path_traversal_send():
+    core.register("legit-target")
+    try:
+        core.send("../evil", "msg", "sender")
+        assert False, "Should have raised"
+    except ValueError:
+        pass

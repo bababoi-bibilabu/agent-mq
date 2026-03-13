@@ -145,7 +145,6 @@ def cmd_history(args):
         if getattr(args, "json", False):
             print(json.dumps(messages, indent=2, ensure_ascii=False))
             return
-        registry = {}
         for msg in messages:
             sl = msg.get("_sender_alias") or msg.get("from", "?")[:12] + "..."
             tl = msg.get("_target_alias") or msg.get("to", "?")[:12] + "..."

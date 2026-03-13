@@ -111,11 +111,18 @@ def _resolve_alias(alias):
     return None, None
 
 
+def _sanitize_id(session_id):
+    """Reject path traversal in session IDs."""
+    if "/" in session_id or "\\" in session_id or ".." in session_id or "\0" in session_id:
+        raise ValueError(f"Invalid session ID: {session_id!r}")
+    return session_id
+
+
 def _resolve_target(target):
     if len(target) > 20 and "-" in target:
-        return target
+        return _sanitize_id(target)
     sid, _ = _resolve_alias(target)
-    return sid if sid else target
+    return _sanitize_id(sid if sid else target)
 
 
 def _is_alive(data):
@@ -130,6 +137,7 @@ def _is_alive(data):
 
 def register(session_id, alias="", desc="", tool="claude-code"):
     """Register a session."""
+    _sanitize_id(session_id)
     if is_cloud():
         return _api("POST", "/register", {
             "id": session_id, "alias": alias, "desc": desc, "tool": tool,
@@ -137,10 +145,11 @@ def register(session_id, alias="", desc="", tool="claude-code"):
 
     _ensure_dirs()
     (INBOX_DIR / session_id).mkdir(exist_ok=True)
+    now = _now_iso()
     data = {
         "id": session_id, "alias": alias, "desc": desc,
-        "tool": tool, "heartbeat": _now_iso(),
-        "registered_at": _now_iso(), "version": VERSION,
+        "tool": tool, "heartbeat": now,
+        "registered_at": now, "version": VERSION,
     }
     (REGISTRY_DIR / f"{session_id}.json").write_text(json.dumps(data, indent=2))
     return {"status": "ok", "id": session_id, "alias": alias}
@@ -163,7 +172,17 @@ def send(target, message, sender, msg_type="text", priority="normal", reply_to=N
         return _api("POST", "/send", body)
 
     _ensure_dirs()
-    resolved = _resolve_target(target)
+    registry = _load_registry()
+
+    # Resolve target using already-loaded registry
+    resolved = target
+    if not (len(target) > 20 and "-" in target):
+        for sid, data in registry.items():
+            if data.get("alias", "").lower() == target.lower():
+                resolved = sid
+                break
+    _sanitize_id(resolved)
+
     target_inbox = INBOX_DIR / resolved
     if not target_inbox.exists():
         raise RuntimeError(f"Target '{target}' not found")
@@ -179,13 +198,13 @@ def send(target, message, sender, msg_type="text", priority="normal", reply_to=N
     tmp.write_text(json.dumps(msg, indent=2))
     tmp.rename(target_inbox / f"{msg['id']}.json")
 
-    registry = _load_registry()
     label = registry.get(resolved, {}).get("alias", "") or resolved[:12] + "..."
     return {"status": "ok", "id": msg["id"], "to": resolved, "label": label}
 
 
 def recv(session_id, peek=False, msg_type=None):
     """Receive messages from a session's inbox."""
+    _sanitize_id(session_id)
     if is_cloud():
         params = f"?peek={'true' if peek else 'false'}"
         if msg_type:
@@ -309,6 +328,7 @@ def get_status():
 
 def heartbeat(session_id):
     """Update session heartbeat."""
+    _sanitize_id(session_id)
     if is_cloud():
         return _api("POST", f"/heartbeat/{session_id}")
 
