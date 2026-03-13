@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+*.pyo
+server/data/
+*.egg-info/
+dist/
+.env
