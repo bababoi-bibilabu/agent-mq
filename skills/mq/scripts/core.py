@@ -197,7 +197,7 @@ def recv(session_id, peek=False, msg_type=None):
     if not inbox.exists():
         return []
 
-    files = sorted(inbox.glob("*.json"))
+    files = sorted(inbox.glob("*.json"), key=lambda f: f.stat().st_mtime)
     if not files:
         return []
 
