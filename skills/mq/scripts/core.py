@@ -5,6 +5,7 @@ Handles both local (file-based) and cloud (HTTP relay) modes.
 """
 
 import json
+import os
 import uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -18,7 +19,7 @@ VERSION = "0.1.0"
 CONFIG_DIR = Path.home() / ".agent-mq"
 CONFIG_FILE = CONFIG_DIR / "config.json"
 
-MQ_DIR = Path.home() / ".claude" / "mq"
+MQ_DIR = Path(os.environ.get("AGENT_MQ_DATA_DIR", str(Path.home() / ".claude" / "mq")))
 REGISTRY_DIR = MQ_DIR / "registry"
 INBOX_DIR = MQ_DIR / "inbox"
 DONE_DIR = MQ_DIR / "done"
