@@ -1,7 +1,7 @@
-"""Tests for cloud server (FastAPI + RocksDB)."""
+"""Tests for cloud server (FastAPI + SQLite)."""
 
 import json
-import shutil
+import os
 import tempfile
 from pathlib import Path
 
@@ -10,7 +10,7 @@ import pytest
 _tmp_dir = tempfile.mkdtemp()
 import server.app as app_module
 app_module.DATA_DIR = Path(_tmp_dir)
-app_module.DB_PATH = str(Path(_tmp_dir) / "test.rocksdb")
+app_module.DB_PATH = str(Path(_tmp_dir) / "test.db")
 
 from fastapi.testclient import TestClient
 from server.app import app
@@ -22,6 +22,9 @@ _auth = {}
 @pytest.fixture(autouse=True)
 def fresh_db():
     global _auth
+    db_path = Path(app_module.DB_PATH)
+    if db_path.exists():
+        os.remove(db_path)
     app_module.db = app_module.open_db()
     app_module.limiter.reset()
     resp = client.post("/api/v1/register")
@@ -29,9 +32,6 @@ def fresh_db():
     yield
     _auth = {}
     app_module.close_db()
-    db_path = Path(app_module.DB_PATH)
-    if db_path.exists():
-        shutil.rmtree(db_path)
 
 
 def _account():
