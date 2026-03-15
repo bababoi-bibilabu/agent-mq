@@ -2,7 +2,7 @@
 
 Storage: RocksDB via rocksdict
 API: FastAPI
-Metadata: collected for analytics (message content NOT logged)
+Auth: Token-based, per-user data isolation
 """
 
 import json
@@ -12,21 +12,26 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request, Response, Depends
 from pydantic import BaseModel, Field
 from rocksdict import Rdict, Options
+from slowapi import Limiter
+from slowapi.errors import RateLimitExceeded
+from slowapi.util import get_remote_address
 
 # ── Config ──
 
 DATA_DIR = Path(__file__).parent / "data"
 DB_PATH = str(DATA_DIR / "mq.rocksdb")
-HEARTBEAT_TIMEOUT_SEC = 600  # 10 minutes
 VERSION = "0.1.0"
+MAX_MESSAGE_BYTES = 10_000  # 10 KB
+RATE_LIMIT = "10/second"
 
 # Column family names
-CF_REGISTRY = "registry"
-CF_INBOX = "inbox"
-CF_DONE = "done"
+CF_USERS = "users"
+CF_REGISTRY = "registry"  # key: user_id:agent_id
+CF_INBOX = "inbox"         # key: user_id:agent_id:msg_id
+CF_DONE = "done"           # key: user_id:msg_id
 CF_ANALYTICS = "analytics"
 
 # ── DB Setup ──
@@ -40,7 +45,7 @@ def open_db():
     opts.create_if_missing(True)
     main_db = Rdict(DB_PATH, options=opts)
     cfs = {}
-    for cf_name in [CF_REGISTRY, CF_INBOX, CF_DONE, CF_ANALYTICS]:
+    for cf_name in [CF_USERS, CF_REGISTRY, CF_INBOX, CF_DONE, CF_ANALYTICS]:
         try:
             cfs[cf_name] = main_db.get_column_family(cf_name)
         except Exception:
@@ -64,13 +69,7 @@ def now_ts():
     return time.time()
 
 
-def is_alive(data: dict) -> bool:
-    hb = data.get("heartbeat_ts", 0)
-    return (now_ts() - hb) < HEARTBEAT_TIMEOUT_SEC
-
-
 def log_event(event_type: str, tool: str = "", extra: dict | None = None):
-    """Log anonymous metadata event. Never logs message content."""
     event = {"event": event_type, "tool": tool, "ts": now_iso()}
     if extra:
         event.update(extra)
@@ -78,16 +77,58 @@ def log_event(event_type: str, tool: str = "", extra: dict | None = None):
     db[CF_ANALYTICS][event_id] = json.dumps(event)
 
 
-def inbox_count(session_id: str) -> int:
-    prefix = f"{session_id}:"
+# ── Auth ──
+
+def get_user_id(request: Request) -> str:
+    """Extract and validate token, return user_id."""
+    auth = request.headers.get("Authorization", "")
+    if not auth.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Missing or invalid Authorization header")
+    token = auth[7:]
+    user_data = db[CF_USERS].get(token)
+    if not user_data:
+        raise HTTPException(status_code=401, detail="Invalid token")
+    return json.loads(user_data)["user_id"]
+
+
+# ── User-scoped helpers ──
+
+def _reg_key(user_id: str, agent_id: str) -> str:
+    return f"{user_id}:{agent_id}"
+
+
+def _inbox_key(user_id: str, agent_id: str, msg_id: str) -> str:
+    return f"{user_id}:{agent_id}:{msg_id}"
+
+
+def _done_key(user_id: str, msg_id: str) -> str:
+    return f"{user_id}:{msg_id}"
+
+
+def _user_prefix(user_id: str) -> str:
+    return f"{user_id}:"
+
+
+def resolve_target(user_id: str, target: str) -> str:
+    if db[CF_REGISTRY].get(_reg_key(user_id, target)):
+        return target
+    raise HTTPException(status_code=404, detail=f"Target '{target}' not found")
+
+
+def store_message(user_id: str, target: str, msg: dict):
+    key = _inbox_key(user_id, target, msg["id"])
+    db[CF_INBOX][key] = json.dumps(msg)
+
+
+def inbox_count(user_id: str, agent_id: str) -> int:
+    prefix = _inbox_key(user_id, agent_id, "")
     return sum(1 for k in db[CF_INBOX].keys() if k.startswith(prefix))
 
 
 # ── Models ──
 
-class RegisterRequest(BaseModel):
-    id: str
-    alias: str = ""
+class AgentRequest(BaseModel):
+    name: str
     desc: str = ""
     tool: str = "claude-code"
 
@@ -104,17 +145,6 @@ class SendRequest(BaseModel):
         populate_by_name = True
 
 
-class BroadcastRequest(BaseModel):
-    message: str
-    sender: str = Field(alias="from")
-    type: str = "text"
-    priority: str = "normal"
-
-    class Config:
-        populate_by_name = True
-
-
-
 # ── App ──
 
 @asynccontextmanager
@@ -125,60 +155,72 @@ async def lifespan(app: FastAPI):
     close_db()
 
 
+limiter = Limiter(key_func=get_remote_address, default_limits=[RATE_LIMIT])
+
 app = FastAPI(
     title="agent-mq",
     version=VERSION,
     description="Cloud relay for cross-machine AI session communication",
     lifespan=lifespan,
 )
+app.state.limiter = limiter
 
 
-def resolve_alias(alias: str) -> str | None:
-    for key, val in db[CF_REGISTRY].items():
-        data = json.loads(val)
-        if data.get("alias", "").lower() == alias.lower():
-            return data["id"]
-    return None
+def _rate_limit_handler(request: Request, exc: RateLimitExceeded):
+    return Response(
+        content=json.dumps({"detail": "Rate limit exceeded"}),
+        status_code=429,
+        media_type="application/json",
+    )
 
 
-def resolve_target(target: str) -> str:
-    if target in db[CF_REGISTRY]:
-        return target
-    sid = resolve_alias(target)
-    if sid:
-        return sid
-    raise HTTPException(status_code=404, detail=f"Target '{target}' not found")
+app.add_exception_handler(RateLimitExceeded, _rate_limit_handler)
 
 
-def store_message(target: str, msg: dict):
-    """Store a message in target's inbox."""
-    inbox_key = f"{target}:{msg['id']}"
-    db[CF_INBOX][inbox_key] = json.dumps(msg)
+@app.middleware("http")
+async def check_body_size(request: Request, call_next):
+    if request.method == "POST":
+        body = await request.body()
+        if len(body) > MAX_MESSAGE_BYTES:
+            return Response(
+                content=json.dumps({"detail": f"Request body exceeds {MAX_MESSAGE_BYTES} bytes"}),
+                status_code=413,
+                media_type="application/json",
+            )
+    return await call_next(request)
 
 
 # ── Routes ──
 
 @app.post("/api/v1/register")
-def register(req: RegisterRequest):
+@limiter.limit(RATE_LIMIT)
+def register_account(request: Request):
+    """Create a new account. Returns a token."""
+    token = str(uuid.uuid4())
+    user_id = str(uuid.uuid4())
+    db[CF_USERS][token] = json.dumps({"user_id": user_id, "created_at": now_iso()})
+    log_event("register_account")
+    return {"token": token}
+
+
+@app.post("/api/v1/agents")
+@limiter.limit(RATE_LIMIT)
+def add_agent(request: Request, req: AgentRequest, user_id: str = Depends(get_user_id)):
     data = {
-        "id": req.id,
-        "alias": req.alias,
+        "name": req.name,
         "desc": req.desc,
         "tool": req.tool,
-        "heartbeat": now_iso(),
-        "heartbeat_ts": now_ts(),
         "registered_at": now_iso(),
     }
-    db[CF_REGISTRY][req.id] = json.dumps(data)
-    log_event("register", req.tool)
-    return {"status": "ok", "id": req.id, "alias": req.alias}
+    db[CF_REGISTRY][_reg_key(user_id, req.name)] = json.dumps(data)
+    log_event("add_agent", req.tool)
+    return {"status": "ok", "name": req.name}
 
 
 @app.post("/api/v1/send")
-def send(req: SendRequest):
-    target = resolve_target(req.target)
-    if target not in db[CF_REGISTRY]:
-        raise HTTPException(status_code=404, detail=f"Target '{target}' not registered")
+@limiter.limit(RATE_LIMIT)
+def send(request: Request, req: SendRequest, user_id: str = Depends(get_user_id)):
+    target = resolve_target(user_id, req.target)
 
     msg = {
         "id": str(uuid.uuid4()),
@@ -192,14 +234,14 @@ def send(req: SendRequest):
     if req.reply_to:
         msg["reply_to"] = req.reply_to
 
-    store_message(target, msg)
+    store_message(user_id, target, msg)
     log_event("send", extra={"msg_type": req.type, "priority": req.priority})
     return {"status": "ok", "id": msg["id"], "to": target}
 
 
-@app.get("/api/v1/recv/{session_id}")
-def recv(session_id: str, peek: bool = False, type: str | None = None):
-    prefix = f"{session_id}:"
+@app.get("/api/v1/recv/{agent_id}")
+def recv(agent_id: str, request: Request, peek: bool = False, type: str | None = None, user_id: str = Depends(get_user_id)):
+    prefix = _inbox_key(user_id, agent_id, "")
     messages = []
     keys_to_delete = []
 
@@ -210,10 +252,6 @@ def recv(session_id: str, peek: bool = False, type: str | None = None):
         if type and msg.get("type", "text") != type:
             continue
 
-        sender_data = db[CF_REGISTRY].get(msg.get("from", ""))
-        if sender_data:
-            msg["_sender_alias"] = json.loads(sender_data).get("alias", "")
-
         messages.append(msg)
         if not peek:
             keys_to_delete.append(key)
@@ -221,7 +259,7 @@ def recv(session_id: str, peek: bool = False, type: str | None = None):
     for key in keys_to_delete:
         msg_data = db[CF_INBOX][key]
         msg = json.loads(msg_data)
-        db[CF_DONE][msg["id"]] = msg_data
+        db[CF_DONE][_done_key(user_id, msg["id"])] = msg_data
         del db[CF_INBOX][key]
 
     if keys_to_delete:
@@ -230,118 +268,59 @@ def recv(session_id: str, peek: bool = False, type: str | None = None):
     return messages
 
 
-
-@app.post("/api/v1/broadcast")
-def broadcast(req: BroadcastRequest):
-    sent = 0
+@app.get("/api/v1/agents")
+def list_agents(request: Request, user_id: str = Depends(get_user_id)):
+    prefix = _user_prefix(user_id)
+    agents = []
     for key, val in db[CF_REGISTRY].items():
-        data = json.loads(val)
-        sid = data["id"]
-        if sid == req.sender or not is_alive(data):
+        if not key.startswith(prefix):
             continue
-
-        msg = {
-            "id": str(uuid.uuid4()),
-            "from": req.sender,
-            "to": sid,
-            "payload": req.message,
-            "type": req.type,
-            "priority": req.priority,
-            "ts": now_iso(),
-            "broadcast": True,
-        }
-        store_message(sid, msg)
-        sent += 1
-
-    log_event("broadcast", extra={"recipients": sent})
-    return {"status": "ok", "sent": sent}
-
-
-@app.get("/api/v1/sessions")
-def list_sessions(alive: bool = False):
-    sessions = []
-    for key, val in db[CF_REGISTRY].items():
         data = json.loads(val)
-        alive_status = is_alive(data)
-        if alive and not alive_status:
-            continue
-
-        sessions.append({
-            "id": data["id"],
-            "alias": data.get("alias", ""),
+        agents.append({
+            "name": data["name"],
             "desc": data.get("desc", ""),
             "tool": data.get("tool", "unknown"),
-            "status": "alive" if alive_status else "stale",
-            "pending": inbox_count(data["id"]),
-            "heartbeat": data.get("heartbeat", ""),
+            "pending": inbox_count(user_id, data["name"]),
         })
+    return agents
 
-    return sessions
 
-
-@app.get("/api/v1/resolve/{alias}")
-def resolve(alias: str):
-    sid = resolve_alias(alias)
-    if not sid:
-        raise HTTPException(status_code=404, detail=f"Alias '{alias}' not found")
-    return json.loads(db[CF_REGISTRY][sid])
+@app.get("/api/v1/agents/{name}")
+def get_agent(name: str, request: Request, user_id: str = Depends(get_user_id)):
+    raw = db[CF_REGISTRY].get(_reg_key(user_id, name))
+    if not raw:
+        raise HTTPException(status_code=404, detail=f"Agent '{name}' not found")
+    return json.loads(raw)
 
 
 @app.get("/api/v1/status")
-def status():
-    registry_count = sum(1 for _ in db[CF_REGISTRY].keys())
-    alive_count = sum(
-        1 for val in db[CF_REGISTRY].values()
-        if is_alive(json.loads(val))
-    )
-    pending_count = sum(1 for _ in db[CF_INBOX].keys())
-    done_count = sum(1 for _ in db[CF_DONE].keys())
+def status(request: Request, user_id: str = Depends(get_user_id)):
+    prefix = _user_prefix(user_id)
+    reg_count = sum(1 for k in db[CF_REGISTRY].keys() if k.startswith(prefix))
+    pending_count = sum(1 for k in db[CF_INBOX].keys() if k.startswith(prefix))
+    done_count = sum(1 for k in db[CF_DONE].keys() if k.startswith(prefix))
 
     return {
         "version": VERSION,
-        "sessions": {"total": registry_count, "alive": alive_count},
+        "sessions": {"total": reg_count},
         "messages": {"pending": pending_count, "delivered": done_count},
     }
 
 
-@app.post("/api/v1/heartbeat/{session_id}")
-def heartbeat(session_id: str):
-    raw = db[CF_REGISTRY].get(session_id)
-    if not raw:
-        raise HTTPException(status_code=404, detail=f"Session '{session_id}' not registered")
-    data = json.loads(raw)
-    data["heartbeat"] = now_iso()
-    data["heartbeat_ts"] = now_ts()
-    db[CF_REGISTRY][session_id] = json.dumps(data)
-    return {"status": "ok"}
-
-
-@app.delete("/api/v1/clean")
-def clean(timeout: int = 10):
-    timeout_sec = timeout * 60
-    cleaned = 0
-    keys_to_delete = []
-
-    for key, val in db[CF_REGISTRY].items():
-        data = json.loads(val)
-        if (now_ts() - data.get("heartbeat_ts", 0)) > timeout_sec:
-            keys_to_delete.append((key, data))
-
-    for key, data in keys_to_delete:
-        sid = data["id"]
-        prefix = f"{sid}:"
-        for ik in [k for k in db[CF_INBOX].keys() if k.startswith(prefix)]:
-            del db[CF_INBOX][ik]
-        del db[CF_REGISTRY][key]
-        cleaned += 1
-
-    log_event("clean", extra={"removed": cleaned})
-    return {"status": "ok", "cleaned": cleaned}
+@app.get("/api/v1/history")
+def history(request: Request, limit: int = 20, user_id: str = Depends(get_user_id)):
+    prefix = _user_prefix(user_id)
+    messages = []
+    for key, val in db[CF_DONE].items():
+        if not key.startswith(prefix):
+            continue
+        messages.append(json.loads(val))
+    messages.sort(key=lambda m: m.get("ts", ""), reverse=True)
+    return messages[:limit]
 
 
 @app.get("/api/v1/analytics/summary")
-def analytics_summary():
-    """Aggregated anonymous usage stats."""
+def analytics_summary(request: Request, user_id: str = Depends(get_user_id)):
     events = {}
     tools = {}
     total = 0

@@ -1,8 +1,0 @@
-interface:
-  display_name: "agent-mq"
-  short_description: "Message queue for cross-session AI communication"
-  icon_small: "./assets/mq-icon.svg"
-  brand_color: "#10B981"
-
-policy:
-  allow_implicit_invocation: true

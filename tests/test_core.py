@@ -1,316 +1,226 @@
 """Tests for agent-mq core module."""
 
 import json
+import time
 
+import pytest
 import core
 
 
-def test_register():
-    result = core.register("sess-001", alias="backend", desc="Backend agent")
-    assert result["status"] == "ok"
-    assert result["id"] == "sess-001"
-    assert result["alias"] == "backend"
+# ── Add ──
 
-    reg_file = core.REGISTRY_DIR / "sess-001.json"
-    assert reg_file.exists()
-    data = json.loads(reg_file.read_text())
-    assert data["alias"] == "backend"
+def test_add():
+    result = core.add("backend", desc="Backend agent")
+    assert result == {"status": "ok", "name": "backend"}
+
+    data = json.loads((core.REGISTRY_DIR / "backend.json").read_text())
+    assert data["name"] == "backend"
     assert data["desc"] == "Backend agent"
     assert data["tool"] == "claude-code"
 
 
-def test_register_creates_inbox():
-    core.register("sess-002")
-    assert (core.INBOX_DIR / "sess-002").is_dir()
+def test_add_creates_inbox():
+    core.add("worker")
+    assert (core.INBOX_DIR / "worker").is_dir()
 
+
+def test_add_same_name_overwrites():
+    core.add("dup", desc="first")
+    core.add("dup", desc="second")
+    assert json.loads((core.REGISTRY_DIR / "dup.json").read_text())["desc"] == "second"
+
+
+# ── Send + Recv ──
 
 def test_send_and_recv():
-    core.register("sender-1", alias="alice")
-    core.register("receiver-1", alias="bob")
+    core.add("alice")
+    core.add("bob")
 
-    result = core.send("bob", "hello from alice", "sender-1")
+    result = core.send("bob", "hello", "alice")
     assert result["status"] == "ok"
-    assert result["to"] == "receiver-1"
-    msg_id = result["id"]
+    assert result["to"] == "bob"
 
-    messages = core.recv("receiver-1")
-    assert len(messages) == 1
-    assert messages[0]["payload"] == "hello from alice"
-    assert messages[0]["from"] == "sender-1"
-    assert messages[0]["id"] == msg_id
-    assert messages[0]["_sender_alias"] == "alice"
+    msgs = core.recv("bob")
+    assert len(msgs) == 1
+    assert msgs[0]["payload"] == "hello"
+    assert msgs[0]["from"] == "alice"
+    assert msgs[0]["id"] == result["id"]
 
-    # Consumed — second recv should be empty
-    messages2 = core.recv("receiver-1")
-    assert len(messages2) == 0
+    assert core.recv("bob") == []
 
 
-def test_send_by_session_id():
-    core.register("target-direct")
-    result = core.send("target-direct", "direct msg", "someone")
-    assert result["to"] == "target-direct"
-
-    messages = core.recv("target-direct")
-    assert len(messages) == 1
-    assert messages[0]["payload"] == "direct msg"
+def test_send_to_self():
+    core.add("solo")
+    core.send("solo", "note to self", "solo")
+    assert core.recv("solo")[0]["payload"] == "note to self"
 
 
 def test_send_target_not_found():
-    try:
+    with pytest.raises(RuntimeError, match="not found"):
         core.send("nonexistent", "msg", "sender")
-        assert False, "Should have raised"
-    except RuntimeError as e:
-        assert "not found" in str(e)
 
 
-def test_recv_peek():
-    core.register("peek-test")
-    core.send("peek-test", "peek msg", "someone")
-
-    msgs1 = core.recv("peek-test", peek=True)
-    assert len(msgs1) == 1
-    assert msgs1[0]["payload"] == "peek msg"
-
-    # Still there after peek
-    msgs2 = core.recv("peek-test", peek=True)
-    assert len(msgs2) == 1
-    assert msgs2[0]["payload"] == "peek msg"
-
-    # Consume
-    msgs3 = core.recv("peek-test", peek=False)
-    assert len(msgs3) == 1
-    assert msgs3[0]["payload"] == "peek msg"
-
-    msgs4 = core.recv("peek-test")
-    assert len(msgs4) == 0
-
-
-def test_recv_type_filter():
-    core.register("filter-test")
-    core.send("filter-test", "text msg", "s1", msg_type="text")
-    core.send("filter-test", "task msg", "s1", msg_type="task")
-    core.send("filter-test", "query msg", "s1", msg_type="query")
-
-    tasks = core.recv("filter-test", peek=True, msg_type="task")
-    assert len(tasks) == 1
-    assert tasks[0]["payload"] == "task msg"
-
-    queries = core.recv("filter-test", peek=True, msg_type="query")
-    assert len(queries) == 1
-    assert queries[0]["payload"] == "query msg"
-
-
-def test_recv_nonexistent_session():
-    messages = core.recv("no-such-session")
-    assert messages == []
+@pytest.mark.parametrize("payload", [
+    "",
+    "你好世界 🌍 café αβγ \n\ttab",
+    'he said "hello" and \\ backslash \n newline',
+])
+def test_send_special_payloads(payload):
+    core.add("special")
+    core.send("special", payload, "sender")
+    assert core.recv("special")[0]["payload"] == payload
 
 
 def test_send_with_reply_to():
-    core.register("reply-target")
-    result = core.send("reply-target", "response", "replier", reply_to="orig-msg-id")
-    msgs = core.recv("reply-target")
-    assert msgs[0]["reply_to"] == "orig-msg-id"
+    core.add("replier")
+    core.send("replier", "response", "s", reply_to="orig-id")
+    assert core.recv("replier")[0]["reply_to"] == "orig-id"
 
 
 def test_send_priority():
-    core.register("pri-test")
-    core.send("pri-test", "urgent!", "s1", priority="urgent")
-    msgs = core.recv("pri-test")
-    assert msgs[0]["priority"] == "urgent"
+    core.add("urgent-target")
+    core.send("urgent-target", "urgent!", "s", priority="urgent")
+    assert core.recv("urgent-target")[0]["priority"] == "urgent"
 
 
-def test_send_invalid_type():
-    try:
-        core.send("x", "msg", "s", msg_type="invalid")
-        assert False, "Should have raised"
-    except ValueError as e:
-        assert "Invalid type" in str(e)
+@pytest.mark.parametrize("field, value, match", [
+    ("msg_type", "invalid", "Invalid type"),
+    ("priority", "critical", "Invalid priority"),
+])
+def test_send_invalid_field(field, value, match):
+    with pytest.raises(ValueError, match=match):
+        core.send("x", "msg", "s", **{field: value})
 
 
-def test_send_invalid_priority():
-    try:
-        core.send("x", "msg", "s", priority="critical")
-        assert False, "Should have raised"
-    except ValueError as e:
-        assert "Invalid priority" in str(e)
+# ── Recv ──
+
+def test_recv_peek():
+    core.add("peek-test")
+    core.send("peek-test", "peek msg", "s")
+
+    for _ in range(2):
+        msgs = core.recv("peek-test", peek=True)
+        assert len(msgs) == 1
+        assert msgs[0]["payload"] == "peek msg"
+
+    assert len(core.recv("peek-test")) == 1
+    assert core.recv("peek-test") == []
 
 
-def test_broadcast():
-    core.register("bc-sender", alias="sender")
-    core.register("bc-recv1", alias="recv1")
-    core.register("bc-recv2", alias="recv2")
+def test_recv_type_filter():
+    core.add("filter")
+    core.send("filter", "text msg", "s", msg_type="text")
+    core.send("filter", "task msg", "s", msg_type="task")
 
-    result = core.broadcast("hello everyone", "bc-sender")
-    assert result["status"] == "ok"
-    assert result["sent"] == 2
+    tasks = core.recv("filter", peek=True, msg_type="task")
+    assert len(tasks) == 1
+    assert tasks[0]["payload"] == "task msg"
 
-    msgs1 = core.recv("bc-recv1")
-    assert len(msgs1) == 1
-    assert msgs1[0]["payload"] == "hello everyone"
-    assert msgs1[0]["broadcast"] is True
 
-    msgs2 = core.recv("bc-recv2")
-    assert len(msgs2) == 1
-    assert msgs2[0]["payload"] == "hello everyone"
+def test_recv_nonexistent():
+    assert core.recv("no-such") == []
 
-    # Sender should not receive own broadcast
-    msgs_sender = core.recv("bc-sender")
-    assert len(msgs_sender) == 0
 
+def test_recv_skips_corrupt_json():
+    core.add("corrupt")
+    core.send("corrupt", "good msg", "s")
+    (core.INBOX_DIR / "corrupt" / "bad.json").write_text("{broken!!!")
+
+    msgs = core.recv("corrupt")
+    assert len(msgs) == 1
+    assert msgs[0]["payload"] == "good msg"
+
+
+# ── Ls ──
 
 def test_ls():
-    core.register("ls-1", alias="alpha", desc="First")
-    core.register("ls-2", alias="beta", desc="Second")
+    core.add("alpha", desc="First")
+    core.add("beta", desc="Second")
+    core.send("alpha", "pending msg", "beta")
 
-    sessions = core.ls()
-    assert len(sessions) == 2
-    by_id = {s["id"]: s for s in sessions}
-    assert by_id["ls-1"]["alias"] == "alpha"
-    assert by_id["ls-1"]["status"] == "alive"
-    assert by_id["ls-1"]["pending"] == 0
-    assert by_id["ls-2"]["alias"] == "beta"
-
-
-def test_ls_alive_only():
-    core.register("alive-test")
-    core.register("stale-test")
-
-    # Make stale-test stale
-    reg_file = core.REGISTRY_DIR / "stale-test.json"
-    data = json.loads(reg_file.read_text())
-    data["heartbeat"] = "2020-01-01T00:00:00Z"
-    reg_file.write_text(json.dumps(data))
-
-    sessions = core.ls(alive_only=True)
-    ids = [s["id"] for s in sessions]
-    assert "alive-test" in ids
-    assert "stale-test" not in ids
+    agents = core.ls()
+    assert len(agents) == 2
+    by_name = {a["name"]: a for a in agents}
+    assert by_name["alpha"]["pending"] == 1
+    assert by_name["beta"]["pending"] == 0
 
 
-def test_resolve():
-    core.register("resolve-test", alias="finder")
-    data = core.resolve("finder")
-    assert data["id"] == "resolve-test"
-    assert data["alias"] == "finder"
+def test_ls_empty():
+    assert core.ls() == []
 
 
-def test_resolve_not_found():
-    try:
-        core.resolve("nonexistent-alias")
-        assert False, "Should have raised"
-    except RuntimeError as e:
-        assert "not found" in str(e)
-
-
-def test_status():
-    core.register("status-test")
-    core.send("status-test", "pending msg", "status-test")
-
-    s = core.get_status()
-    assert s["version"] == core.VERSION
-    assert s["sessions"]["total"] == 1
-    assert s["sessions"]["alive"] == 1
-    assert s["messages"]["pending"] == 1
-
-    core.recv("status-test")
-    s2 = core.get_status()
-    assert s2["messages"]["pending"] == 0
-    assert s2["messages"]["delivered"] == 1
-
-
-def test_heartbeat():
-    core.register("hb-test")
-
-    # Backdate heartbeat so we can verify it actually updates
-    reg_file = core.REGISTRY_DIR / "hb-test.json"
-    data = json.loads(reg_file.read_text())
-    data["heartbeat"] = "2020-01-01T00:00:00Z"
-    reg_file.write_text(json.dumps(data))
-
-    result = core.heartbeat("hb-test")
-    assert result["status"] == "ok"
-
-    reg_after = json.loads(reg_file.read_text())
-    assert reg_after["heartbeat"] > "2020-01-01T00:00:00Z"
-    assert reg_after["heartbeat"].startswith("20")  # valid ISO timestamp
-
-
-def test_heartbeat_not_registered():
-    try:
-        core.heartbeat("not-registered")
-        assert False, "Should have raised"
-    except RuntimeError as e:
-        assert "not registered" in str(e)
-
+# ── History ──
 
 def test_history():
-    core.register("hist-sender", alias="hsender")
-    core.register("hist-recv", alias="hrecv")
-    core.send("hist-recv", "msg for history", "hist-sender")
-    core.recv("hist-recv")  # consume → moves to done
+    core.add("h-sender")
+    core.add("h-recv")
+    core.send("h-recv", "for history", "h-sender")
+    core.recv("h-recv")
 
     msgs = core.history(limit=50)
-    assert any(m["payload"] == "msg for history" for m in msgs)
+    assert len(msgs) == 1
+    assert msgs[0]["payload"] == "for history"
 
 
-def test_clean():
-    core.register("stale-session")
-    # Manually set heartbeat to the past
-    reg_file = core.REGISTRY_DIR / "stale-session.json"
-    data = json.loads(reg_file.read_text())
-    data["heartbeat"] = "2020-01-01T00:00:00Z"
-    reg_file.write_text(json.dumps(data))
+def test_history_limit():
+    core.add("lim-s")
+    core.add("lim-r")
+    for i in range(5):
+        core.send("lim-r", f"msg-{i}", "lim-s")
+    core.recv("lim-r")
 
-    result = core.clean(timeout_min=1)
-    assert result["cleaned"] == 1
-    assert not reg_file.exists()
+    assert len(core.history(limit=50)) == 5
+    assert len(core.history(limit=2)) == 2
 
+
+def test_history_reverse_chronological():
+    core.add("chrono-s")
+    core.add("chrono-r")
+    for i in range(3):
+        core.send("chrono-r", f"msg-{i}", "chrono-s")
+        time.sleep(0.05)
+    core.recv("chrono-r")
+
+    msgs = core.history(limit=50)
+    assert msgs[0]["payload"] == "msg-2"
+    assert msgs[-1]["payload"] == "msg-0"
+
+
+# ── Ordering / Done ──
 
 def test_multiple_messages_ordering():
-    core.register("order-test")
-    core.send("order-test", "first", "s1")
-    core.send("order-test", "second", "s1")
-    core.send("order-test", "third", "s1")
+    core.add("order")
+    for msg in ("first", "second", "third"):
+        core.send("order", msg, "s")
 
-    msgs = core.recv("order-test")
-    assert len(msgs) == 3
-    payloads = [m["payload"] for m in msgs]
+    payloads = [m["payload"] for m in core.recv("order")]
     assert payloads == ["first", "second", "third"]
 
 
 def test_done_directory_receives_consumed():
-    core.register("done-test")
-    core.send("done-test", "will be consumed", "s1")
-    msgs = core.recv("done-test")
-    msg_id = msgs[0]["id"]
+    core.add("done-test")
+    core.send("done-test", "will be consumed", "s")
+    msg_id = core.recv("done-test")[0]["id"]
 
     done_file = core.DONE_DIR / f"{msg_id}.json"
     assert done_file.exists()
-    data = json.loads(done_file.read_text())
-    assert data["payload"] == "will be consumed"
+    assert json.loads(done_file.read_text())["payload"] == "will be consumed"
 
 
-def test_path_traversal_register():
-    for bad_id in ["../etc/passwd", "foo/bar", "a\\b", "a\0b"]:
-        try:
-            core.register(bad_id)
-            assert False, f"Should have raised for {bad_id!r}"
-        except ValueError as e:
-            assert "Invalid session ID" in str(e)
+# ── Path traversal ──
+
+@pytest.mark.parametrize("bad_name", ["../etc/passwd", "foo/bar", "a\\b", "a\0b", ".."])
+def test_path_traversal_add(bad_name):
+    with pytest.raises(ValueError, match="Invalid agent name"):
+        core.add(bad_name)
 
 
 def test_path_traversal_recv():
-    try:
+    with pytest.raises(ValueError):
         core.recv("../../etc")
-        assert False, "Should have raised"
-    except ValueError:
-        pass
 
 
 def test_path_traversal_send():
-    core.register("legit-target")
-    try:
-        core.send("../evil", "msg", "sender")
-        assert False, "Should have raised"
-    except ValueError:
-        pass
+    core.add("legit")
+    with pytest.raises(ValueError):
+        core.send("../evil", "msg", "s")

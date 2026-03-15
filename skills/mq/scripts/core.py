@@ -7,7 +7,7 @@ Handles both local (file-based) and cloud (HTTP relay) modes.
 import json
 import os
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
@@ -23,7 +23,6 @@ MQ_DIR = Path(os.environ.get("AGENT_MQ_DATA_DIR", str(Path.home() / ".claude" / 
 REGISTRY_DIR = MQ_DIR / "registry"
 INBOX_DIR = MQ_DIR / "inbox"
 DONE_DIR = MQ_DIR / "done"
-HEARTBEAT_TIMEOUT_MIN = 10
 
 MSG_TYPES = ("text", "task", "query", "response", "status")
 PRIORITIES = ("low", "normal", "urgent")
@@ -56,7 +55,7 @@ def _api(method, path, body=None):
     server = cfg["server"]
     token = cfg["token"]
     if not server:
-        raise RuntimeError("Server URL not configured. Run `mq login` first.")
+        raise RuntimeError("Server URL not configured. Run `mq register` first.")
 
     url = f"{server}/api/v1{path}"
     data = json.dumps(body).encode() if body else None
@@ -67,14 +66,23 @@ def _api(method, path, body=None):
     req = Request(url, data=data, headers=headers, method=method)
     try:
         with urlopen(req, timeout=10) as resp:
-            return json.loads(resp.read().decode())
+            raw = resp.read().decode()
+            try:
+                return json.loads(raw)
+            except json.JSONDecodeError:
+                raise RuntimeError(f"Server returned invalid JSON: {raw[:200]}")
     except HTTPError as e:
-        err = {}
-        if e.headers.get("content-type", "").startswith("application/json"):
-            err = json.loads(e.read().decode())
-        raise RuntimeError(err.get("detail", e.reason))
+        detail = e.reason
+        try:
+            if e.headers.get("content-type", "").startswith("application/json"):
+                detail = json.loads(e.read().decode()).get("detail", e.reason)
+        except (json.JSONDecodeError, UnicodeDecodeError, OSError):
+            pass
+        raise RuntimeError(detail)
     except URLError as e:
         raise RuntimeError(f"Cannot reach server: {e.reason}")
+    except (TimeoutError, ConnectionError, OSError) as e:
+        raise RuntimeError(f"Network error: {e}")
 
 
 # ── Local helpers ──
@@ -88,9 +96,11 @@ def _now_iso():
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def _parse_iso(s):
-    s = s.rstrip("Z")
-    return datetime.fromisoformat(s).replace(tzinfo=timezone.utc)
+def _sanitize_name(name):
+    """Reject path traversal in agent names."""
+    if "/" in name or "\\" in name or ".." in name or "\0" in name:
+        raise ValueError(f"Invalid agent name: {name!r}")
+    return name
 
 
 def _load_registry():
@@ -99,65 +109,54 @@ def _load_registry():
     for f in REGISTRY_DIR.glob("*.json"):
         try:
             data = json.loads(f.read_text())
-            result[data["id"]] = data
+            result[data["name"]] = data
         except (json.JSONDecodeError, KeyError):
             pass
     return result
 
 
-def _resolve_alias(alias):
-    for sid, data in _load_registry().items():
-        if data.get("alias", "").lower() == alias.lower():
-            return sid, data
-    return None, None
-
-
-def _sanitize_id(session_id):
-    """Reject path traversal in session IDs."""
-    if "/" in session_id or "\\" in session_id or ".." in session_id or "\0" in session_id:
-        raise ValueError(f"Invalid session ID: {session_id!r}")
-    return session_id
-
-
-def _resolve_target(target):
-    if len(target) > 20 and "-" in target:
-        return _sanitize_id(target)
-    sid, _ = _resolve_alias(target)
-    return _sanitize_id(sid if sid else target)
-
-
-def _is_alive(data):
-    try:
-        hb = _parse_iso(data["heartbeat"])
-        return (datetime.now(timezone.utc) - hb) < timedelta(minutes=HEARTBEAT_TIMEOUT_MIN)
-    except (KeyError, ValueError):
-        return False
+def _write_msg(inbox_dir, msg):
+    """Atomically write a message to an inbox directory."""
+    tmp = inbox_dir / f"{msg['id']}.tmp"
+    tmp.write_text(json.dumps(msg, indent=2))
+    tmp.rename(inbox_dir / f"{msg['id']}.json")
 
 
 # ── Core operations ──
 
-def register(session_id, alias="", desc="", tool="claude-code"):
-    """Register a session."""
-    _sanitize_id(session_id)
+def register(server):
+    """Register an account on a cloud server. Returns token."""
+    from urllib.request import Request as Req, urlopen as _urlopen
+    req = Req(f"{server.rstrip('/')}/api/v1/register", method="POST",
+              headers={"Content-Type": "application/json"})
+    try:
+        with _urlopen(req, timeout=10) as resp:
+            data = json.loads(resp.read().decode())
+    except Exception as e:
+        raise RuntimeError(f"Cannot reach server: {e}")
+    token = data["token"]
+    save_config({"mode": "cloud", "server": server.rstrip("/"), "token": token})
+    return {"status": "ok", "token": token}
+
+
+def add(name, desc="", tool="claude-code"):
+    """Add an agent to the message queue."""
+    _sanitize_name(name)
     if is_cloud():
-        return _api("POST", "/register", {
-            "id": session_id, "alias": alias, "desc": desc, "tool": tool,
-        })
+        return _api("POST", "/agents", {"name": name, "desc": desc, "tool": tool})
 
     _ensure_dirs()
-    (INBOX_DIR / session_id).mkdir(exist_ok=True)
-    now = _now_iso()
+    (INBOX_DIR / name).mkdir(exist_ok=True)
     data = {
-        "id": session_id, "alias": alias, "desc": desc,
-        "tool": tool, "heartbeat": now,
-        "registered_at": now, "version": VERSION,
+        "name": name, "desc": desc,
+        "tool": tool, "registered_at": _now_iso(), "version": VERSION,
     }
-    (REGISTRY_DIR / f"{session_id}.json").write_text(json.dumps(data, indent=2))
-    return {"status": "ok", "id": session_id, "alias": alias}
+    (REGISTRY_DIR / f"{name}.json").write_text(json.dumps(data, indent=2))
+    return {"status": "ok", "name": name}
 
 
 def send(target, message, sender, msg_type="text", priority="normal", reply_to=None):
-    """Send a message to a target session (ID or alias)."""
+    """Send a message to a target agent by name."""
     if msg_type not in MSG_TYPES:
         raise ValueError(f"Invalid type '{msg_type}'")
     if priority not in PRIORITIES:
@@ -173,47 +172,34 @@ def send(target, message, sender, msg_type="text", priority="normal", reply_to=N
         return _api("POST", "/send", body)
 
     _ensure_dirs()
-    registry = _load_registry()
+    _sanitize_name(target)
 
-    # Resolve target using already-loaded registry
-    resolved = target
-    if not (len(target) > 20 and "-" in target):
-        for sid, data in registry.items():
-            if data.get("alias", "").lower() == target.lower():
-                resolved = sid
-                break
-    _sanitize_id(resolved)
-
-    target_inbox = INBOX_DIR / resolved
+    target_inbox = INBOX_DIR / target
     if not target_inbox.exists():
         raise RuntimeError(f"Target '{target}' not found")
 
     msg = {
-        "id": str(uuid.uuid4()), "from": sender, "to": resolved,
+        "id": str(uuid.uuid4()), "from": sender, "to": target,
         "payload": message, "type": msg_type, "priority": priority, "ts": _now_iso(),
     }
     if reply_to:
         msg["reply_to"] = reply_to
 
-    tmp = target_inbox / f"{msg['id']}.tmp"
-    tmp.write_text(json.dumps(msg, indent=2))
-    tmp.rename(target_inbox / f"{msg['id']}.json")
-
-    label = registry.get(resolved, {}).get("alias", "") or resolved[:12] + "..."
-    return {"status": "ok", "id": msg["id"], "to": resolved, "label": label}
+    _write_msg(target_inbox, msg)
+    return {"status": "ok", "id": msg["id"], "to": target}
 
 
-def recv(session_id, peek=False, msg_type=None):
-    """Receive messages from a session's inbox."""
-    _sanitize_id(session_id)
+def recv(name, peek=False, msg_type=None):
+    """Receive messages from an agent's inbox."""
+    _sanitize_name(name)
     if is_cloud():
         params = f"?peek={'true' if peek else 'false'}"
         if msg_type:
             params += f"&type={msg_type}"
-        return _api("GET", f"/recv/{session_id}{params}")
+        return _api("GET", f"/recv/{name}{params}")
 
     _ensure_dirs()
-    inbox = INBOX_DIR / session_id
+    inbox = INBOX_DIR / name
     if not inbox.exists():
         return []
 
@@ -221,7 +207,6 @@ def recv(session_id, peek=False, msg_type=None):
     if not files:
         return []
 
-    registry = _load_registry()
     messages = []
     for f in files:
         try:
@@ -230,7 +215,6 @@ def recv(session_id, peek=False, msg_type=None):
             continue
         if msg_type and msg.get("type", "text") != msg_type:
             continue
-        msg["_sender_alias"] = registry.get(msg.get("from", ""), {}).get("alias", "")
         messages.append(msg)
         if not peek:
             f.rename(DONE_DIR / f.name)
@@ -238,154 +222,37 @@ def recv(session_id, peek=False, msg_type=None):
     return messages
 
 
-def broadcast(message, sender, msg_type="text", priority="normal"):
-    """Broadcast a message to all alive sessions."""
+def ls():
+    """List registered agents."""
     if is_cloud():
-        return _api("POST", "/broadcast", {
-            "message": message, "from": sender, "type": msg_type, "priority": priority,
+        return _api("GET", "/agents")
+
+    _ensure_dirs()
+    registry = _load_registry()
+    agents = []
+    for name, data in sorted(registry.items()):
+        inbox = INBOX_DIR / name
+        agents.append({
+            "name": name,
+            "desc": data.get("desc", ""),
+            "tool": data.get("tool", "unknown"),
+            "pending": sum(1 for _ in inbox.glob("*.json")) if inbox.exists() else 0,
         })
-
-    _ensure_dirs()
-    registry = _load_registry()
-    sent = 0
-    for sid, data in registry.items():
-        if sid == sender or not _is_alive(data):
-            continue
-        target_inbox = INBOX_DIR / sid
-        if not target_inbox.exists():
-            continue
-        msg = {
-            "id": str(uuid.uuid4()), "from": sender, "to": sid,
-            "payload": message, "type": msg_type, "priority": priority,
-            "ts": _now_iso(), "broadcast": True,
-        }
-        tmp = target_inbox / f"{msg['id']}.tmp"
-        tmp.write_text(json.dumps(msg, indent=2))
-        tmp.rename(target_inbox / f"{msg['id']}.json")
-        sent += 1
-    return {"status": "ok", "sent": sent}
-
-
-def ls(alive_only=False):
-    """List registered sessions."""
-    if is_cloud():
-        params = "?alive=true" if alive_only else ""
-        return _api("GET", f"/sessions{params}")
-
-    _ensure_dirs()
-    registry = _load_registry()
-    now = datetime.now(timezone.utc)
-    sessions = []
-    for sid, data in sorted(registry.items(), key=lambda x: x[1].get("alias", "")):
-        hb = _parse_iso(data["heartbeat"])
-        age = now - hb
-        alive = _is_alive(data)
-        if alive_only and not alive:
-            continue
-        inbox = INBOX_DIR / sid
-        sessions.append({
-            "id": sid, "alias": data.get("alias", "") or "-",
-            "desc": data.get("desc", ""), "tool": data.get("tool", "unknown"),
-            "status": "alive" if alive else "stale",
-            "pending": len(list(inbox.glob("*.json"))) if inbox.exists() else 0,
-            "heartbeat": data["heartbeat"],
-            "heartbeat_age_sec": int(age.total_seconds()),
-        })
-    return sessions
-
-
-def resolve(alias):
-    """Resolve an alias to session data."""
-    if is_cloud():
-        return _api("GET", f"/resolve/{alias}")
-
-    sid, data = _resolve_alias(alias)
-    if sid:
-        return data
-    raise RuntimeError(f"Alias '{alias}' not found")
-
-
-def get_status():
-    """Get message queue status."""
-    if is_cloud():
-        return _api("GET", "/status")
-
-    _ensure_dirs()
-    registry = _load_registry()
-    alive_count = sum(1 for d in registry.values() if _is_alive(d))
-    total_pending = 0
-    for sid in registry:
-        inbox = INBOX_DIR / sid
-        if inbox.exists():
-            total_pending += len(list(inbox.glob("*.json")))
-    return {
-        "version": VERSION,
-        "mode": "local",
-        "path": str(MQ_DIR),
-        "sessions": {"total": len(registry), "alive": alive_count},
-        "messages": {"pending": total_pending, "delivered": len(list(DONE_DIR.glob("*.json")))},
-    }
-
-
-def heartbeat(session_id):
-    """Update session heartbeat."""
-    _sanitize_id(session_id)
-    if is_cloud():
-        return _api("POST", f"/heartbeat/{session_id}")
-
-    _ensure_dirs()
-    reg_file = REGISTRY_DIR / f"{session_id}.json"
-    if not reg_file.exists():
-        raise RuntimeError(f"{session_id[:12]}... not registered")
-    data = json.loads(reg_file.read_text())
-    data["heartbeat"] = _now_iso()
-    reg_file.write_text(json.dumps(data, indent=2))
-    return {"status": "ok"}
+    return agents
 
 
 def history(limit=20):
-    """View message history (local only)."""
+    """View message history."""
     if is_cloud():
-        return []
+        return _api("GET", f"/history?limit={limit}")
 
     _ensure_dirs()
     files = sorted(DONE_DIR.glob("*.json"), key=lambda f: f.stat().st_mtime, reverse=True)[:limit]
-    registry = _load_registry()
     messages = []
     for f in files:
         try:
             msg = json.loads(f.read_text())
         except json.JSONDecodeError:
             continue
-        msg["_sender_alias"] = registry.get(msg.get("from", ""), {}).get("alias", "")
-        msg["_target_alias"] = registry.get(msg.get("to", ""), {}).get("alias", "")
         messages.append(msg)
     return messages
-
-
-def clean(timeout_min=10):
-    """Clean stale sessions."""
-    if is_cloud():
-        return _api("DELETE", f"/clean?timeout={timeout_min}")
-
-    _ensure_dirs()
-    now = datetime.now(timezone.utc)
-    timeout = timedelta(minutes=timeout_min)
-    cleaned = 0
-    for reg_file in list(REGISTRY_DIR.glob("*.json")):
-        try:
-            data = json.loads(reg_file.read_text())
-        except json.JSONDecodeError:
-            reg_file.unlink()
-            continue
-        hb = _parse_iso(data["heartbeat"])
-        if now - hb > timeout:
-            sid = data["id"]
-            reg_file.unlink()
-            inbox = INBOX_DIR / sid
-            if inbox.exists():
-                for f in inbox.glob("*"):
-                    f.unlink()
-                inbox.rmdir()
-            cleaned += 1
-    return {"status": "ok", "cleaned": cleaned}

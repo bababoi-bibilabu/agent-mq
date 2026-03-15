@@ -7,351 +7,269 @@ from pathlib import Path
 
 import pytest
 
-# Patch DATA_DIR before importing app
 _tmp_dir = tempfile.mkdtemp()
-
 import server.app as app_module
-
 app_module.DATA_DIR = Path(_tmp_dir)
 app_module.DB_PATH = str(Path(_tmp_dir) / "test.rocksdb")
 
 from fastapi.testclient import TestClient
 from server.app import app
 
+client = TestClient(app)
+_auth = {}
+
 
 @pytest.fixture(autouse=True)
 def fresh_db():
-    """Open a fresh DB for each test."""
+    global _auth
     app_module.db = app_module.open_db()
+    app_module.limiter.reset()
+    resp = client.post("/api/v1/register")
+    _auth = {"Authorization": f"Bearer {resp.json()['token']}"}
     yield
+    _auth = {}
     app_module.close_db()
     db_path = Path(app_module.DB_PATH)
     if db_path.exists():
         shutil.rmtree(db_path)
 
 
-client = TestClient(app)
+def _account():
+    return {"Authorization": f"Bearer {client.post('/api/v1/register').json()['token']}"}
 
 
-# ── Register ──
+def _add(name, headers=None, **kw):
+    client.post("/api/v1/agents", json={"name": name, **kw}, headers=headers or _auth)
 
-def test_register():
-    resp = client.post("/api/v1/register", json={
-        "id": "s1", "alias": "backend", "desc": "Backend agent", "tool": "claude-code",
-    })
+
+def _send(target, msg="msg", sender="s", headers=None, **kw):
+    return client.post("/api/v1/send", json={"target": target, "message": msg, "from": sender, **kw}, headers=headers or _auth)
+
+
+def _recv(name, headers=None, **params):
+    h = headers or _auth
+    qs = "&".join(f"{k}={v}" for k, v in params.items())
+    return client.get(f"/api/v1/recv/{name}{'?' + qs if qs else ''}", headers=h).json()
+
+
+def _get(path, headers=None):
+    return client.get(path, headers=headers or _auth)
+
+
+# ── Account registration ──
+
+def test_register_account():
+    resp = client.post("/api/v1/register")
     assert resp.status_code == 200
-    data = resp.json()
-    assert data["status"] == "ok"
-    assert data["id"] == "s1"
-    assert data["alias"] == "backend"
-
-    # Verify actually stored in DB
-    raw = app_module.db[app_module.CF_REGISTRY]["s1"]
-    stored = json.loads(raw)
-    assert stored["alias"] == "backend"
-    assert stored["desc"] == "Backend agent"
-    assert stored["tool"] == "claude-code"
-    assert "heartbeat_ts" in stored
+    assert len(resp.json()["token"]) > 20
 
 
-def test_register_minimal():
-    resp = client.post("/api/v1/register", json={"id": "s2"})
+def test_register_returns_unique_tokens():
+    t1 = client.post("/api/v1/register").json()["token"]
+    t2 = client.post("/api/v1/register").json()["token"]
+    assert t1 != t2
+
+
+# ── Auth required ──
+
+def test_endpoints_require_auth():
+    assert client.post("/api/v1/agents", json={"name": "x"}).status_code == 401
+    assert client.post("/api/v1/send", json={"target": "x", "message": "m", "from": "s"}).status_code == 401
+    assert client.get("/api/v1/recv/x").status_code == 401
+    assert client.get("/api/v1/agents").status_code == 401
+
+
+def test_invalid_token_rejected():
+    bad = {"Authorization": "Bearer invalid-token-xxx"}
+    assert client.post("/api/v1/agents", json={"name": "x"}, headers=bad).status_code == 401
+
+
+# ── Data isolation ──
+
+def test_users_cannot_see_each_others_agents():
+    h1 = _account()
+    h2 = _account()
+
+    _add("alice", headers=h1)
+    _add("bob", headers=h2)
+
+    agents1 = _get("/api/v1/agents", headers=h1).json()
+    agents2 = _get("/api/v1/agents", headers=h2).json()
+
+    assert len(agents1) == 1
+    assert agents1[0]["name"] == "alice"
+    assert len(agents2) == 1
+    assert agents2[0]["name"] == "bob"
+
+
+def test_users_cannot_read_each_others_messages():
+    h1 = _account()
+    h2 = _account()
+
+    _add("sender", headers=h1)
+    _add("target", headers=h1)
+    _send("target", "secret", "sender", headers=h1)
+
+    _add("target", headers=h2)
+
+    assert len(_recv("target", headers=h1)) == 1
+    assert len(_recv("target", headers=h2)) == 0
+
+
+# ── Add agent ──
+
+def test_add_agent():
+    resp = client.post("/api/v1/agents", json={"name": "backend", "desc": "Backend agent"}, headers=_auth)
     assert resp.status_code == 200
+    assert resp.json() == {"status": "ok", "name": "backend"}
 
-    # Verify stored with defaults
-    raw = app_module.db[app_module.CF_REGISTRY]["s2"]
-    stored = json.loads(raw)
-    assert stored["id"] == "s2"
-    assert stored["alias"] == ""
-    assert stored["tool"] == "claude-code"
+
+def test_add_agent_duplicate_overwrites():
+    _add("dup", desc="first")
+    _add("dup", desc="second")
+    agents = _get("/api/v1/agents").json()
+    assert len(agents) == 1
+    assert agents[0]["desc"] == "second"
 
 
 # ── Send ──
 
 def test_send():
-    client.post("/api/v1/register", json={"id": "sender1"})
-    client.post("/api/v1/register", json={"id": "target1", "alias": "tgt"})
-
-    resp = client.post("/api/v1/send", json={
-        "target": "target1", "message": "hello", "from": "sender1",
-        "type": "text", "priority": "normal",
-    })
+    _add("sender1")
+    _add("target1")
+    resp = _send("target1", "hello", "sender1")
     assert resp.status_code == 200
     assert resp.json()["to"] == "target1"
 
-    # Verify message actually stored and retrievable
-    msgs = client.get("/api/v1/recv/target1").json()
+    msgs = _recv("target1")
     assert len(msgs) == 1
     assert msgs[0]["payload"] == "hello"
     assert msgs[0]["from"] == "sender1"
-    assert msgs[0]["type"] == "text"
-
-
-def test_send_by_alias():
-    client.post("/api/v1/register", json={"id": "alias-target", "alias": "myalias"})
-    resp = client.post("/api/v1/send", json={
-        "target": "myalias", "message": "via alias", "from": "someone",
-    })
-    assert resp.status_code == 200
-    assert resp.json()["to"] == "alias-target"
-
-    # Verify message ended up in the right inbox
-    msgs = client.get("/api/v1/recv/alias-target").json()
-    assert len(msgs) == 1
-    assert msgs[0]["payload"] == "via alias"
-
-
-def test_send_with_reply_to():
-    client.post("/api/v1/register", json={"id": "reply-tgt"})
-    client.post("/api/v1/send", json={
-        "target": "reply-tgt", "message": "reply", "from": "s",
-        "reply_to": "orig-msg-id",
-    })
-
-    # Verify reply_to was preserved
-    msgs = client.get("/api/v1/recv/reply-tgt").json()
-    assert len(msgs) == 1
-    assert msgs[0]["reply_to"] == "orig-msg-id"
 
 
 def test_send_target_not_found():
-    resp = client.post("/api/v1/send", json={
-        "target": "nonexistent", "message": "msg", "from": "s",
-    })
-    assert resp.status_code == 404
+    assert _send("nonexistent").status_code == 404
+
+
+def test_send_with_reply_to():
+    _add("reply-tgt")
+    _send("reply-tgt", "reply", "s", reply_to="orig-id")
+    assert _recv("reply-tgt")[0]["reply_to"] == "orig-id"
+
+
+def test_send_empty_message():
+    _add("empty-tgt")
+    _send("empty-tgt", "", "s")
+    assert _recv("empty-tgt")[0]["payload"] == ""
+
+
+def test_send_unicode():
+    _add("uni-tgt")
+    payload = "你好世界 🌍 café"
+    _send("uni-tgt", payload, "s")
+    assert _recv("uni-tgt")[0]["payload"] == payload
 
 
 # ── Recv ──
 
 def test_recv():
-    client.post("/api/v1/register", json={"id": "recv-s", "alias": "rsender"})
-    client.post("/api/v1/register", json={"id": "recv-t"})
-    client.post("/api/v1/send", json={
-        "target": "recv-t", "message": "hello", "from": "recv-s",
-    })
+    _add("recv-s")
+    _add("recv-t")
+    _send("recv-t", "hello", "recv-s")
 
-    resp = client.get("/api/v1/recv/recv-t")
-    assert resp.status_code == 200
-    msgs = resp.json()
+    msgs = _recv("recv-t")
     assert len(msgs) == 1
     assert msgs[0]["payload"] == "hello"
-    assert msgs[0]["_sender_alias"] == "rsender"
-
-    # Consumed
-    resp2 = client.get("/api/v1/recv/recv-t")
-    assert resp2.json() == []
+    assert _recv("recv-t") == []
 
 
 def test_recv_peek():
-    client.post("/api/v1/register", json={"id": "peek-t"})
-    client.post("/api/v1/send", json={
-        "target": "peek-t", "message": "peek", "from": "s",
-    })
+    _add("peek-t")
+    _send("peek-t", "peek", "s")
 
-    resp = client.get("/api/v1/recv/peek-t?peek=true")
-    msgs = resp.json()
-    assert len(msgs) == 1
-    assert msgs[0]["payload"] == "peek"
+    for _ in range(2):
+        assert len(_recv("peek-t", peek="true")) == 1
 
-    # Still there
-    resp2 = client.get("/api/v1/recv/peek-t?peek=true")
-    assert len(resp2.json()) == 1
-    assert resp2.json()[0]["payload"] == "peek"
-
-    # Consume and verify gone
-    client.get("/api/v1/recv/peek-t")
-    resp3 = client.get("/api/v1/recv/peek-t")
-    assert resp3.json() == []
+    _recv("peek-t")
+    assert _recv("peek-t") == []
 
 
 def test_recv_type_filter():
-    client.post("/api/v1/register", json={"id": "filter-t"})
-    client.post("/api/v1/send", json={
-        "target": "filter-t", "message": "text msg", "from": "s", "type": "text",
-    })
-    client.post("/api/v1/send", json={
-        "target": "filter-t", "message": "task msg", "from": "s", "type": "task",
-    })
+    _add("filter-t")
+    _send("filter-t", "text msg", "s", type="text")
+    _send("filter-t", "task msg", "s", type="task")
 
-    resp = client.get("/api/v1/recv/filter-t?peek=true&type=task")
-    msgs = resp.json()
+    msgs = _recv("filter-t", peek="true", type="task")
     assert len(msgs) == 1
     assert msgs[0]["payload"] == "task msg"
 
 
 def test_recv_empty():
-    resp = client.get("/api/v1/recv/no-such-session")
-    assert resp.status_code == 200
-    assert resp.json() == []
+    assert _get("/api/v1/recv/no-such").json() == []
 
 
-# ── Broadcast ──
+# ── Agents list ──
 
-def test_broadcast():
-    client.post("/api/v1/register", json={"id": "bc-s"})
-    client.post("/api/v1/register", json={"id": "bc-r1"})
-    client.post("/api/v1/register", json={"id": "bc-r2"})
-
-    resp = client.post("/api/v1/broadcast", json={
-        "message": "hello all", "from": "bc-s",
-    })
-    assert resp.status_code == 200
-    data = resp.json()
-    assert data["sent"] == 2
-
-    msgs1 = client.get("/api/v1/recv/bc-r1").json()
-    assert len(msgs1) == 1
-    assert msgs1[0]["payload"] == "hello all"
-    assert msgs1[0]["broadcast"] is True
-
-    msgs2 = client.get("/api/v1/recv/bc-r2").json()
-    assert len(msgs2) == 1
-    assert msgs2[0]["payload"] == "hello all"
-
-    # Sender shouldn't receive own broadcast
-    msgs_s = client.get("/api/v1/recv/bc-s").json()
-    assert len(msgs_s) == 0
-
-
-# ── Sessions ──
-
-def test_list_sessions():
-    client.post("/api/v1/register", json={"id": "ls-1", "alias": "a1"})
-    client.post("/api/v1/register", json={"id": "ls-2", "alias": "a2"})
-
-    resp = client.get("/api/v1/sessions")
-    assert resp.status_code == 200
-    sessions = resp.json()
-    assert len(sessions) == 2
-    ids = [s["id"] for s in sessions]
-    assert "ls-1" in ids
-    assert "ls-2" in ids
-
-
-def test_list_sessions_alive_filter():
-    client.post("/api/v1/register", json={"id": "alive-s"})
-    client.post("/api/v1/register", json={"id": "stale-s"})
-
-    # Make stale-s stale
-    raw = app_module.db[app_module.CF_REGISTRY]["stale-s"]
-    data = json.loads(raw)
-    data["heartbeat_ts"] = 0
-    app_module.db[app_module.CF_REGISTRY]["stale-s"] = json.dumps(data)
-
-    resp = client.get("/api/v1/sessions?alive=true")
-    sessions = resp.json()
-    ids = [s["id"] for s in sessions]
-    assert "alive-s" in ids
-    assert "stale-s" not in ids  # filtered out
-
-
-# ── Resolve ──
-
-def test_resolve():
-    client.post("/api/v1/register", json={"id": "res-s", "alias": "findme"})
-    resp = client.get("/api/v1/resolve/findme")
-    assert resp.status_code == 200
-    assert resp.json()["id"] == "res-s"
-
-
-def test_resolve_not_found():
-    resp = client.get("/api/v1/resolve/nonexistent")
-    assert resp.status_code == 404
+def test_list_agents():
+    _add("a1")
+    _add("a2")
+    agents = _get("/api/v1/agents").json()
+    assert len(agents) == 2
+    assert {a["name"] for a in agents} == {"a1", "a2"}
 
 
 # ── Status ──
 
 def test_status():
-    client.post("/api/v1/register", json={"id": "stat-s"})
-    client.post("/api/v1/send", json={
-        "target": "stat-s", "message": "pending msg", "from": "stat-s",
-    })
+    _add("stat-s")
+    _send("stat-s", "pending", "stat-s")
 
-    resp = client.get("/api/v1/status")
-    assert resp.status_code == 200
-    data = resp.json()
-    assert data["version"] == "0.1.0"
+    data = _get("/api/v1/status").json()
     assert data["sessions"]["total"] == 1
-    assert data["sessions"]["alive"] == 1
     assert data["messages"]["pending"] == 1
 
-    # Consume and check delivered count
-    client.get("/api/v1/recv/stat-s")
-    data2 = client.get("/api/v1/status").json()
-    assert data2["messages"]["pending"] == 0
-    assert data2["messages"]["delivered"] == 1
+    _recv("stat-s")
+    data2 = _get("/api/v1/status").json()
+    assert data2["messages"] == {"pending": 0, "delivered": 1}
 
 
-# ── Heartbeat ──
-
-def test_heartbeat():
-    client.post("/api/v1/register", json={"id": "hb-s"})
-
-    # Backdate heartbeat
-    raw = app_module.db[app_module.CF_REGISTRY]["hb-s"]
-    data = json.loads(raw)
-    old_ts = data["heartbeat_ts"]
-    data["heartbeat_ts"] = 0
-    data["heartbeat"] = "2020-01-01T00:00:00Z"
-    app_module.db[app_module.CF_REGISTRY]["hb-s"] = json.dumps(data)
-
-    resp = client.post("/api/v1/heartbeat/hb-s")
-    assert resp.status_code == 200
-    assert resp.json()["status"] == "ok"
-
-    # Verify timestamp actually updated
-    updated = json.loads(app_module.db[app_module.CF_REGISTRY]["hb-s"])
-    assert updated["heartbeat_ts"] > 0
-    assert updated["heartbeat"] > "2020-01-01T00:00:00Z"
+def test_status_empty():
+    data = _get("/api/v1/status").json()
+    assert data["sessions"] == {"total": 0}
+    assert data["messages"] == {"pending": 0, "delivered": 0}
 
 
-def test_heartbeat_not_registered():
-    resp = client.post("/api/v1/heartbeat/nonexistent")
-    assert resp.status_code == 404
+# ── History ──
+
+def test_history():
+    _add("h-s")
+    _add("h-r")
+    _send("h-r", "for history", "h-s")
+    _recv("h-r")
+
+    msgs = _get("/api/v1/history?limit=50").json()
+    assert len(msgs) == 1
+    assert msgs[0]["payload"] == "for history"
 
 
-# ── Clean ──
-
-def test_clean():
-    client.post("/api/v1/register", json={"id": "clean-s"})
-    # Send a message to clean-s to verify inbox cleanup
-    client.post("/api/v1/send", json={
-        "target": "clean-s", "message": "orphan", "from": "clean-s",
-    })
-
-    # Make it stale
-    raw = app_module.db[app_module.CF_REGISTRY]["clean-s"]
-    data = json.loads(raw)
-    data["heartbeat_ts"] = 0
-    app_module.db[app_module.CF_REGISTRY]["clean-s"] = json.dumps(data)
-
-    resp = client.delete("/api/v1/clean?timeout=1")
-    assert resp.status_code == 200
-    assert resp.json()["cleaned"] == 1
-
-    # Verify actually removed from DB
-    assert app_module.db[app_module.CF_REGISTRY].get("clean-s") is None
-
-    # Verify inbox also cleaned
-    inbox_keys = [k for k in app_module.db[app_module.CF_INBOX].keys()
-                  if k.startswith("clean-s:")]
-    assert inbox_keys == []
+def test_history_empty():
+    assert _get("/api/v1/history").json() == []
 
 
-# ── Analytics ──
+# ── Rate limiting ──
 
-def test_analytics_summary():
-    client.post("/api/v1/register", json={"id": "a-s", "tool": "claude-code"})
-    client.post("/api/v1/register", json={"id": "a-r", "tool": "codex"})
-    client.post("/api/v1/send", json={
-        "target": "a-r", "message": "msg", "from": "a-s",
-    })
+def test_message_max_length():
+    _add("len-tgt")
+    resp = _send("len-tgt", "x" * 20_000, "s")
+    assert resp.status_code == 413
 
-    resp = client.get("/api/v1/analytics/summary")
-    assert resp.status_code == 200
-    data = resp.json()
-    assert data["total_events"] == 3  # 2 registers + 1 send
-    assert data["by_event"]["register"] == 2
-    assert data["by_event"]["send"] == 1
-    assert data["by_tool"]["claude-code"] == 1
-    assert data["by_tool"]["codex"] == 1
+
+def test_qps_rate_limit():
+    _add("rl-tgt")
+    blocked = False
+    for i in range(20):
+        resp = _send("rl-tgt", f"msg-{i}", "s")
+        if resp.status_code == 429:
+            blocked = True
+            break
+    assert blocked
