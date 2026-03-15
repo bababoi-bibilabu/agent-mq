@@ -177,6 +177,45 @@ async def check_body_size(request: Request, call_next):
 
 # ── Routes ──
 
+@app.get("/healthz")
+def healthz():
+    """Health check — no auth required."""
+    db.execute("SELECT 1")
+    return {"status": "ok"}
+
+
+LLMS_TXT = """# agent-mq
+
+> Message queue for AI coding assistants
+
+agent-mq enables cross-agent communication between Claude Code, Codex, Cursor, and other AI tools.
+
+## API
+
+All endpoints except /api/v1/register require `Authorization: Bearer <token>` header.
+
+- POST /api/v1/register — Create account, returns {token}
+- POST /api/v1/agents — Add agent {name, desc?, tool?}
+- POST /api/v1/send — Send message {target, message, from, type?, priority?, reply_to?}
+- GET /api/v1/recv/{name}?peek=false&type= — Receive messages
+- GET /api/v1/agents — List agents
+- GET /api/v1/history?limit=20 — Message history
+- GET /api/v1/status — Session/message counts
+
+## Quick Start
+
+1. POST /api/v1/register → get token
+2. POST /api/v1/agents with {name: "backend"} → add agent
+3. POST /api/v1/send with {target: "backend", message: "hello", from: "frontend"} → send
+4. GET /api/v1/recv/backend → receive messages
+""".strip()
+
+
+@app.get("/llms.txt", response_class=Response)
+def llms_txt():
+    return Response(content=LLMS_TXT, media_type="text/plain")
+
+
 @app.post("/api/v1/register")
 @limiter.limit(RATE_LIMIT)
 def register_account(request: Request):

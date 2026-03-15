@@ -5,6 +5,12 @@ services:
       - "8000:8000"
     volumes:
       - mq-data:/app/data
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
 volumes:
   mq-data:
