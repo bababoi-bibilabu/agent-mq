@@ -1,6 +1,8 @@
 {
-  "agent-mq": {
-    "command": "python3",
-    "args": ["${CLAUDE_PLUGIN_ROOT}/skills/mq/scripts/mcp_server.py"]
+  "mcpServers": {
+    "agent-mq": {
+      "command": "python3",
+      "args": ["/home/farmer/claude_mq/skills/mq/scripts/mcp_server.py"]
+    }
   }
 }
