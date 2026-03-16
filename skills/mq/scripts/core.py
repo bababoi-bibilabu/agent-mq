@@ -59,7 +59,7 @@ def _api(method, path, body=None):
 
     url = f"{server}/api/v1{path}"
     data = json.dumps(body).encode() if body else None
-    headers = {"Content-Type": "application/json"}
+    headers = {"Content-Type": "application/json", "User-Agent": f"agent-mq/{VERSION}"}
     if token:
         headers["Authorization"] = f"Bearer {token}"
 
