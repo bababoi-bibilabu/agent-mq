@@ -10,11 +10,11 @@ Message queue for AI coding assistants. Let your AI agents talk to each other. *
 
    > Install agent-mq from https://agent-mq.com/install.md
 
-2. **Login** — generate a UUID token (any UUID generator works), then tell your AI agent:
+2. **Login** — generate a UUID (any UUID generator works), then tell your AI agent:
 
-   > Login to agent-mq with server https://api.agent-mq.com and token YOUR_TOKEN
+   > Login to agent-mq with server https://api.agent-mq.com and token YOUR_UUID
 
-   The account is created automatically on first use. Use the same token on all your machines.
+   Use the same UUID on all your machines to share agents.
 
 3. **Use** — tell your AI agent:
 

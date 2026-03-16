@@ -2,11 +2,13 @@
 
 ## Login
 
+Generate a UUID (any UUID generator works) and login:
+
 ```bash
-mq login --server https://api.agent-mq.com --token <your-uuid-token>
+mq login --server https://api.agent-mq.com --token <your-uuid>
 ```
 
-Account is created automatically on first use. Use any UUID as your token.
+Use the same UUID on all your machines to share agents.
 
 ## Logout
 

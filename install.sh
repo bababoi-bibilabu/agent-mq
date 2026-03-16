@@ -1,7 +1,5 @@
 #!/usr/bin/env bash
 # agent-mq installer
-# Detects available AI tools and installs accordingly.
-
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -11,11 +9,7 @@ VERSION="0.1.0"
 echo "agent-mq v${VERSION} installer"
 echo "================================"
 
-# Make core script executable
-chmod +x "$MQ_SCRIPT"
-
-# ── Create 'mq' alias ──
-# Add to PATH via symlink in ~/.local/bin
+# ── Create 'mq' command ──
 BIN_DIR="$HOME/.local/bin"
 mkdir -p "$BIN_DIR"
 
@@ -26,74 +20,39 @@ EOF
 chmod +x "$BIN_DIR/mq"
 echo "[ok] mq command installed to $BIN_DIR/mq"
 
-# Check PATH
 if [[ ":$PATH:" != *":$BIN_DIR:"* ]]; then
-    echo "[!!] $BIN_DIR is not in your PATH. Add this to your shell profile:"
+    echo "[!!] $BIN_DIR is not in your PATH. Add to your shell profile:"
     echo "     export PATH=\"\$HOME/.local/bin:\$PATH\""
 fi
 
-# ── Claude Code plugin ──
-INSTALLED_CC=false
-if command -v claude &>/dev/null; then
-    echo ""
-    echo "Claude Code detected."
-
-    # Check if already installed as plugin
-    PLUGIN_DIR="$HOME/.claude/plugins"
-    if [ -d "$PLUGIN_DIR" ]; then
-        echo "  To install as plugin, run:"
-        echo "    claude plugin add $SCRIPT_DIR"
-        echo "  Or manually link the skill:"
-        echo "    ln -sf $SCRIPT_DIR/skills/mq ~/.claude/skills/mq"
-    fi
-
-    # Also ensure skill is available directly
+# ── Link skill for AI tools ──
+if [ -d "$HOME/.claude" ]; then
     SKILL_TARGET="$HOME/.claude/skills/mq"
     if [ ! -e "$SKILL_TARGET" ]; then
         mkdir -p "$HOME/.claude/skills"
         ln -sf "$SCRIPT_DIR/skills/mq" "$SKILL_TARGET"
-        echo "[ok] Claude Code skill linked to $SKILL_TARGET"
-        INSTALLED_CC=true
-    else
-        echo "[ok] Claude Code skill already exists at $SKILL_TARGET"
-        INSTALLED_CC=true
+        echo "[ok] Claude Code skill linked"
     fi
 fi
 
-# ── Codex skill ──
-INSTALLED_CODEX=false
-if command -v codex &>/dev/null; then
-    echo ""
-    echo "Codex detected."
-
-    CODEX_SKILL_DIR="$HOME/.agents/skills/mq"
-    if [ ! -e "$CODEX_SKILL_DIR" ]; then
+if [ -d "$HOME/.agents" ]; then
+    SKILL_TARGET="$HOME/.agents/skills/mq"
+    if [ ! -e "$SKILL_TARGET" ]; then
         mkdir -p "$HOME/.agents/skills"
-        ln -sf "$SCRIPT_DIR/skills/mq" "$CODEX_SKILL_DIR"
-        echo "[ok] Codex skill linked to $CODEX_SKILL_DIR"
-        INSTALLED_CODEX=true
-    else
-        echo "[ok] Codex skill already exists at $CODEX_SKILL_DIR"
-        INSTALLED_CODEX=true
+        ln -sf "$SCRIPT_DIR/skills/mq" "$SKILL_TARGET"
+        echo "[ok] Codex skill linked"
     fi
 fi
 
-# ── Summary ──
+# ── Done ──
 echo ""
 echo "================================"
 echo "Installation complete."
 echo ""
-echo "Quick start:"
-echo "  mq add backend              # add an agent"
-echo "  mq ls                       # list agents"
-echo "  mq send backend 'hi' --from frontend  # send a message"
-echo "  mq recv backend             # receive messages"
+echo "Next: generate a UUID and login:"
+echo "  mq login --server https://api.agent-mq.com --token YOUR_UUID"
 echo ""
-
-if ! $INSTALLED_CC && ! $INSTALLED_CODEX; then
-    echo "No AI tool detected (claude, codex)."
-    echo "The 'mq' command is still available for manual use."
-    echo "Install skills manually:"
-    echo "  Claude Code: ln -sf $SCRIPT_DIR/skills/mq ~/.claude/skills/mq"
-    echo "  Codex:       ln -sf $SCRIPT_DIR/skills/mq ~/.agents/skills/mq"
-fi
+echo "Then:"
+echo "  mq add backend"
+echo "  mq send backend 'hi' --from frontend"
+echo "  mq recv backend"

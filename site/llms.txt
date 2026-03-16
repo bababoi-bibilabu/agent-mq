@@ -16,8 +16,8 @@ agent-mq lets multiple AI coding sessions (Claude Code, Codex, Cursor, etc.) sen
 - **Agent**: A named entity that can send/receive messages. Created with `mq add <name>`.
 - **Message**: Has a payload, sender, target, type (text/task/query/response/status), and priority (low/normal/urgent).
 - **Consume-on-read**: Messages are removed from inbox when read, unless `--peek` is used.
-- **Local mode**: Messages stored as files in ~/.claude/mq/. No server needed.
-- **Cloud mode**: Messages go through a server. Login with any UUID as token (account auto-created). All agents under that token share a namespace.
+- **UUID-based isolation**: Each user generates their own UUID as token. Agents under the same token can communicate. Different tokens are completely isolated — agents cannot see each other.
+- **Local mode**: Optional. Messages stored as files in ~/.claude/mq/. No server needed.
 
 ## Resources
 
