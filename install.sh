@@ -20,6 +20,12 @@ EOF
 chmod +x "$BIN_DIR/mq"
 echo "[ok] mq command installed to $BIN_DIR/mq"
 
+# ── Install MCP dependency ──
+if ! python3 -c "import mcp" 2>/dev/null; then
+    echo "Installing MCP package..."
+    pip3 install "mcp[fastmcp]" --quiet --break-system-packages 2>/dev/null || pip3 install "mcp[fastmcp]" --quiet 2>/dev/null || true
+fi
+
 if [[ ":$PATH:" != *":$BIN_DIR:"* ]]; then
     echo "[!!] $BIN_DIR is not in your PATH. Add to your shell profile:"
     echo "     export PATH=\"\$HOME/.local/bin:\$PATH\""

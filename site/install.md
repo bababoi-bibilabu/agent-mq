@@ -16,6 +16,8 @@ irm https://agent-mq.com/install.ps1 | iex
 
 ## MCP server
 
+Requires: `pip install "mcp[fastmcp]"`
+
 Add to your AI tool's MCP config (e.g. `~/.claude/mcp.json`, `~/.cursor/mcp.json`, etc.):
 
 ```json
