@@ -41,8 +41,7 @@ def open_db():
     conn.execute("PRAGMA foreign_keys=ON")
     conn.executescript("""
         CREATE TABLE IF NOT EXISTS users (
-            token TEXT PRIMARY KEY,
-            user_id TEXT NOT NULL UNIQUE,
+            user_id TEXT PRIMARY KEY,
             created_at TEXT NOT NULL
         );
         CREATE TABLE IF NOT EXISTS agents (
@@ -107,15 +106,21 @@ def log_event(event_type: str, tool: str = "", extra: dict | None = None):
 
 # ── Auth ──
 
-def get_user_id(request: Request) -> str:
+def get_token(request: Request) -> str:
+    """Extract token from header. Auto-register if new."""
     auth = request.headers.get("Authorization", "")
     if not auth.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Missing or invalid Authorization header")
     token = auth[7:]
-    row = db.execute("SELECT user_id FROM users WHERE token = ?", (token,)).fetchone()
+    if len(token) < 16:
+        raise HTTPException(status_code=401, detail="Token too short (min 16 chars)")
+    row = db.execute("SELECT 1 FROM users WHERE user_id = ?", (token,)).fetchone()
     if not row:
-        raise HTTPException(status_code=401, detail="Invalid token")
-    return row["user_id"]
+        db.execute("INSERT INTO users (user_id, created_at) VALUES (?, ?)",
+                   (token, now_iso()))
+        db.execute("UPDATE counters SET value = value + 1 WHERE key = 'users'")
+        db.commit()
+    return token
 
 
 # ── Models ──
@@ -199,23 +204,9 @@ def llms_txt():
     return RedirectResponse("https://agent-mq.com/llms.txt")
 
 
-@app.post("/api/v1/register")
-@limiter.limit(RATE_LIMIT)
-def register_account(request: Request):
-    """Create a new account. Returns a token."""
-    token = str(uuid.uuid4())
-    user_id = str(uuid.uuid4())
-    db.execute("INSERT INTO users (token, user_id, created_at) VALUES (?, ?, ?)",
-               (token, user_id, now_iso()))
-    db.execute("UPDATE counters SET value = value + 1 WHERE key = 'users'")
-    db.commit()
-    log_event("register_account")
-    return {"token": token}
-
-
 @app.post("/api/v1/agents")
 @limiter.limit(RATE_LIMIT)
-def add_agent(request: Request, req: AgentRequest, user_id: str = Depends(get_user_id)):
+def add_agent(request: Request, req: AgentRequest, user_id: str = Depends(get_token)):
     existing = db.execute("SELECT 1 FROM agents WHERE user_id = ? AND name = ?", (user_id, req.name)).fetchone()
     db.execute(
         "INSERT OR REPLACE INTO agents (user_id, name, desc, tool, registered_at) VALUES (?, ?, ?, ?, ?)",
@@ -229,7 +220,7 @@ def add_agent(request: Request, req: AgentRequest, user_id: str = Depends(get_us
 
 @app.post("/api/v1/send")
 @limiter.limit(RATE_LIMIT)
-def send(request: Request, req: SendRequest, user_id: str = Depends(get_user_id)):
+def send(request: Request, req: SendRequest, user_id: str = Depends(get_token)):
     row = db.execute("SELECT 1 FROM agents WHERE user_id = ? AND name = ?",
                      (user_id, req.target)).fetchone()
     if not row:
@@ -257,7 +248,7 @@ def send(request: Request, req: SendRequest, user_id: str = Depends(get_user_id)
 
 @app.get("/api/v1/recv/{agent_name}")
 def recv(agent_name: str, request: Request, peek: bool = False, type: str | None = None,
-         user_id: str = Depends(get_user_id)):
+         user_id: str = Depends(get_token)):
     if type:
         rows = db.execute(
             "SELECT msg_id, data FROM inbox WHERE user_id = ? AND agent_name = ? ORDER BY ts",
@@ -290,7 +281,7 @@ def recv(agent_name: str, request: Request, peek: bool = False, type: str | None
 
 
 @app.get("/api/v1/agents")
-def list_agents(request: Request, user_id: str = Depends(get_user_id)):
+def list_agents(request: Request, user_id: str = Depends(get_token)):
     rows = db.execute("SELECT name, desc, tool FROM agents WHERE user_id = ?", (user_id,)).fetchall()
     agents = []
     for r in rows:
@@ -307,7 +298,7 @@ def list_agents(request: Request, user_id: str = Depends(get_user_id)):
 
 
 @app.get("/api/v1/agents/{name}")
-def get_agent(name: str, request: Request, user_id: str = Depends(get_user_id)):
+def get_agent(name: str, request: Request, user_id: str = Depends(get_token)):
     row = db.execute("SELECT * FROM agents WHERE user_id = ? AND name = ?",
                      (user_id, name)).fetchone()
     if not row:
@@ -316,7 +307,7 @@ def get_agent(name: str, request: Request, user_id: str = Depends(get_user_id)):
 
 
 @app.get("/api/v1/status")
-def status(request: Request, user_id: str = Depends(get_user_id)):
+def status(request: Request, user_id: str = Depends(get_token)):
     reg_count = db.execute("SELECT COUNT(*) as c FROM agents WHERE user_id = ?", (user_id,)).fetchone()["c"]
     pending = db.execute("SELECT COUNT(*) as c FROM inbox WHERE user_id = ?", (user_id,)).fetchone()["c"]
     delivered = db.execute("SELECT COUNT(*) as c FROM done WHERE user_id = ?", (user_id,)).fetchone()["c"]
@@ -328,7 +319,7 @@ def status(request: Request, user_id: str = Depends(get_user_id)):
 
 
 @app.get("/api/v1/history")
-def history(request: Request, limit: int = 20, user_id: str = Depends(get_user_id)):
+def history(request: Request, limit: int = 20, user_id: str = Depends(get_token)):
     rows = db.execute("SELECT data FROM done WHERE user_id = ? ORDER BY ts DESC LIMIT ?",
                       (user_id, limit)).fetchall()
     return [json.loads(r["data"]) for r in rows]
@@ -343,7 +334,7 @@ def public_stats():
 
 
 @app.get("/api/v1/analytics/summary")
-def analytics_summary(request: Request, user_id: str = Depends(get_user_id)):
+def analytics_summary(request: Request, user_id: str = Depends(get_token)):
     rows = db.execute("SELECT data FROM analytics").fetchall()
     events = {}
     tools = {}

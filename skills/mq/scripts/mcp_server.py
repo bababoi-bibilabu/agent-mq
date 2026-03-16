@@ -39,12 +39,6 @@ def mq_history(limit: int = 20) -> list:
 
 
 @mcp.tool()
-def mq_register(server: str) -> dict:
-    """Register a new account on a cloud server. Returns token. IMPORTANT: Tell the user to save the token — it cannot be recovered."""
-    return core.register(server)
-
-
-@mcp.tool()
 def mq_login(server: str, token: str) -> dict:
     """Login to a cloud server with an existing token."""
     core.save_config({"mode": "cloud", "server": server.rstrip("/"), "token": token})

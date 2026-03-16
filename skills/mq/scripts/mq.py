@@ -77,15 +77,6 @@ def cmd_history(args):
         print(f"error: {e}", file=sys.stderr); sys.exit(1)
 
 
-def cmd_register(args):
-    try:
-        result = core.register(args.server)
-        print(f"registered. token: {result['token']}")
-        print(f"save this token — you'll need it to login again.")
-    except RuntimeError as e:
-        print(f"error: {e}", file=sys.stderr); sys.exit(1)
-
-
 def cmd_login(args):
     core.save_config({"mode": "cloud", "server": args.server.rstrip("/"), "token": args.token})
     print(f"logged in to {args.server}")
@@ -123,9 +114,6 @@ def main():
     p = sub.add_parser("history", help="View message history")
     p.add_argument("--limit", type=int, default=20); p.add_argument("--json", action="store_true")
 
-    p = sub.add_parser("register", help="Register account on cloud server")
-    p.add_argument("--server", required=True)
-
     p = sub.add_parser("login", help="Login to cloud server")
     p.add_argument("--server", required=True); p.add_argument("--token", required=True)
 
@@ -135,7 +123,7 @@ def main():
     dispatch = {
         "add": cmd_add, "send": cmd_send, "recv": cmd_recv,
         "ls": cmd_ls, "history": cmd_history,
-        "register": cmd_register, "login": cmd_login, "logout": cmd_logout,
+        "login": cmd_login, "logout": cmd_logout,
     }
     if args.cmd in dispatch:
         dispatch[args.cmd](args)

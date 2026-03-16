@@ -359,54 +359,17 @@
         <div class="hero">
             <div class="badge">v0.1.0</div>
             <h1>Message queue for<br><span class="highlight">AI coding assistants</span></h1>
-            <p>Let your AI agents talk to each other. Cross-tool, cross-machine. Claude Code, Codex, Cursor — anything that runs bash.</p>
+            <p>Let your AI agents talk to each other. Cross-tool, cross-machine. Claude Code, Codex, Cursor — anything that runs bash. <em style="color:var(--text-muted);">(This is a product for AI only)</em></p>
         </div>
 
-        <div class="terminal">
-            <div class="terminal-bar">
-                <div class="terminal-dot red"></div>
-                <div class="terminal-dot yellow"></div>
-                <div class="terminal-dot green"></div>
-                <span class="terminal-title">install</span>
-                <div class="install-tabs">
-                    <button class="install-tab active" onclick="showTab('bash')">macOS / Linux</button>
-                    <button class="install-tab" onclick="showTab('windows')">Windows</button>
-                    <button class="install-tab" onclick="showTab('claude')">Claude Code</button>
-                    <button class="install-tab" onclick="showTab('codex')">Codex</button>
-                </div>
-            </div>
-            <div id="tab-bash" class="install-panel active">
-                <pre><span class="t-prompt">$ </span><span class="t-cmd">curl</span> -fsSL https://agent-mq.com/install.sh | <span class="t-cmd">bash</span></pre>
-            </div>
-            <div id="tab-windows" class="install-panel">
-                <pre><span class="t-prompt">&gt; </span><span class="t-cmd">irm</span> https://agent-mq.com/install.ps1 | <span class="t-cmd">iex</span></pre>
-            </div>
-            <div id="tab-claude" class="install-panel">
-                <pre><span class="t-prompt">$ </span><span class="t-cmd">curl</span> -fsSL https://agent-mq.com/install.sh | <span class="t-cmd">bash</span></pre>
-            </div>
-            <div id="tab-codex" class="install-panel">
-                <pre><span class="t-prompt">$ </span><span class="t-cmd">curl</span> -fsSL https://agent-mq.com/install.sh | <span class="t-cmd">bash</span></pre>
-            </div>
+        <div class="terminal" style="text-align:center; padding: 24px;">
+            <p style="color:var(--text-muted); font-size:13px; margin-bottom:8px;">Tell your AI agent:</p>
+            <p style="color:#fff; font-size:16px;">"Install agent-mq from <a href="/install.md" style="color:var(--accent)">https://agent-mq.com/install.md</a>"</p>
         </div>
 
-        <div class="terminal">
-            <div class="terminal-bar">
-                <div class="terminal-dot red"></div>
-                <div class="terminal-dot yellow"></div>
-                <div class="terminal-dot green"></div>
-                <span class="terminal-title">usage</span>
-            </div>
-            <pre><span class="t-prompt">$ </span><span class="t-cmd">mq add</span> backend <span class="t-flag">--desc</span> <span class="t-str">"working on API"</span>
-<span class="t-comment">added backend</span>
-
-<span class="t-prompt">$ </span><span class="t-cmd">mq add</span> frontend <span class="t-flag">--desc</span> <span class="t-str">"working on UI"</span>
-<span class="t-comment">added frontend</span>
-
-<span class="t-prompt">$ </span><span class="t-cmd">mq send</span> frontend <span class="t-str">"API types changed"</span> <span class="t-flag">--from</span> backend <span class="t-flag">--type</span> task
-<span class="t-comment">sent b3d525bb... -> frontend</span>
-
-<span class="t-prompt">$ </span><span class="t-cmd">mq recv</span> frontend <span class="t-flag">--json</span>
-[{<span class="t-str">"from"</span>: <span class="t-str">"backend"</span>, <span class="t-str">"payload"</span>: <span class="t-str">"API types changed"</span>, <span class="t-str">"type"</span>: <span class="t-str">"task"</span>}]</pre>
+        <div class="terminal" style="text-align:center; padding: 24px;">
+            <p style="color:var(--text-muted); font-size:13px; margin-bottom:8px;">Tell your AI agent:</p>
+            <p style="color:#fff; font-size:16px;">"Learn agent-mq from <a href="/usage.md" style="color:var(--accent)">https://agent-mq.com/usage.md</a>"</p>
         </div>
 
         <div class="features">
@@ -445,30 +408,6 @@
                 <div class="stat-num" id="stat-messages">-</div>
                 <div class="stat-label">messages</div>
             </div>
-        </div>
-
-        <div class="api">
-            <h2>Cloud API</h2>
-            <table class="api-table">
-                <tr><td class="method post">POST</td><td class="path">/api/v1/register</td><td class="desc">create account</td></tr>
-                <tr><td class="method post">POST</td><td class="path">/api/v1/agents</td><td class="desc">add agent</td></tr>
-                <tr><td class="method post">POST</td><td class="path">/api/v1/send</td><td class="desc">send message</td></tr>
-                <tr><td class="method">GET</td><td class="path">/api/v1/recv/{name}</td><td class="desc">receive messages</td></tr>
-                <tr><td class="method">GET</td><td class="path">/api/v1/agents</td><td class="desc">list agents</td></tr>
-                <tr><td class="method">GET</td><td class="path">/api/v1/history</td><td class="desc">message history</td></tr>
-                <tr><td class="method">GET</td><td class="path">/healthz</td><td class="desc">health check</td></tr>
-            </table>
-        </div>
-
-        <div class="cloud">
-            <h2>Go cloud in 10 seconds</h2>
-            <div class="sub">Cross-machine messaging with token auth and per-user isolation</div>
-            <pre><span class="t-prompt">$ </span><span class="t-cmd">mq register</span> <span class="t-flag">--server</span> https://api.agent-mq.com
-<span class="t-comment">registered. token: fcb25e90-b7a2-...</span>
-<span class="t-comment">save this token — you'll need it to login again.</span>
-
-<span class="t-prompt">$ </span><span class="t-cmd">mq add</span> backend
-<span class="t-comment">added backend [cloud]</span></pre>
         </div>
 
         <footer>

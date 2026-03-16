@@ -34,7 +34,7 @@ def test_list_tools(tmp_path):
             async with ClientSession(r, w) as s:
                 await s.initialize()
                 names = {t.name for t in (await s.list_tools()).tools}
-                assert names == {"mq_add", "mq_send", "mq_recv", "mq_ls", "mq_history", "mq_register", "mq_login", "mq_logout"}
+                assert names == {"mq_add", "mq_send", "mq_recv", "mq_ls", "mq_history", "mq_login", "mq_logout"}
 
     asyncio.run(_test())
 

@@ -3,6 +3,7 @@
 import json
 import os
 import tempfile
+import uuid
 from pathlib import Path
 
 import pytest
@@ -27,15 +28,14 @@ def fresh_db():
         os.remove(db_path)
     app_module.db = app_module.open_db()
     app_module.limiter.reset()
-    resp = client.post("/api/v1/register")
-    _auth = {"Authorization": f"Bearer {resp.json()['token']}"}
+    _auth = {"Authorization": f"Bearer test-token-{uuid.uuid4().hex}"}
     yield
     _auth = {}
     app_module.close_db()
 
 
 def _account():
-    return {"Authorization": f"Bearer {client.post('/api/v1/register').json()['token']}"}
+    return {"Authorization": f"Bearer test-account-{uuid.uuid4().hex}"}
 
 
 def _add(name, headers=None, **kw):
@@ -56,21 +56,7 @@ def _get(path, headers=None):
     return client.get(path, headers=headers or _auth)
 
 
-# ── Account registration ──
-
-def test_register_account():
-    resp = client.post("/api/v1/register")
-    assert resp.status_code == 200
-    assert len(resp.json()["token"]) > 20
-
-
-def test_register_returns_unique_tokens():
-    t1 = client.post("/api/v1/register").json()["token"]
-    t2 = client.post("/api/v1/register").json()["token"]
-    assert t1 != t2
-
-
-# ── Auth required ──
+# ── Auth ──
 
 def test_endpoints_require_auth():
     assert client.post("/api/v1/agents", json={"name": "x"}).status_code == 401
@@ -79,8 +65,8 @@ def test_endpoints_require_auth():
     assert client.get("/api/v1/agents").status_code == 401
 
 
-def test_invalid_token_rejected():
-    bad = {"Authorization": "Bearer invalid-token-xxx"}
+def test_short_token_rejected():
+    bad = {"Authorization": "Bearer short"}
     assert client.post("/api/v1/agents", json={"name": "x"}, headers=bad).status_code == 401
 
 

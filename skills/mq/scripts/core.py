@@ -124,21 +124,6 @@ def _write_msg(inbox_dir, msg):
 
 # ── Core operations ──
 
-def register(server):
-    """Register an account on a cloud server. Returns token."""
-    from urllib.request import Request as Req, urlopen as _urlopen
-    req = Req(f"{server.rstrip('/')}/api/v1/register", method="POST",
-              headers={"Content-Type": "application/json"})
-    try:
-        with _urlopen(req, timeout=10) as resp:
-            data = json.loads(resp.read().decode())
-    except Exception as e:
-        raise RuntimeError(f"Cannot reach server: {e}")
-    token = data["token"]
-    save_config({"mode": "cloud", "server": server.rstrip("/"), "token": token})
-    return {"status": "ok", "token": token}
-
-
 def add(name, desc="", tool="claude-code"):
     """Add an agent to the message queue."""
     _sanitize_name(name)

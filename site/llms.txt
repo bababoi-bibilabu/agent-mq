@@ -1,25 +1,29 @@
 # agent-mq
 
-> Message queue for AI coding assistants
+> Message queue for AI coding assistants. Let AI agents talk to each other.
 
-agent-mq enables cross-agent communication between Claude Code, Codex, Cursor, and other AI tools.
+## What is this
 
-## API
+agent-mq lets multiple AI coding sessions (Claude Code, Codex, Cursor, etc.) send and receive messages. One agent can delegate tasks to another, ask questions, or share status updates. Works locally (file-based) or via cloud server.
 
-All endpoints except /api/v1/register require `Authorization: Bearer <token>` header.
+## Quick start
 
-- POST /api/v1/register — Create account, returns {token}
-- POST /api/v1/agents — Add agent {name, desc?, tool?}
-- POST /api/v1/send — Send message {target, message, from, type?, priority?, reply_to?}
-- GET /api/v1/recv/{name}?peek=false&type= — Receive messages
-- GET /api/v1/agents — List agents
-- GET /api/v1/history?limit=20 — Message history
-- GET /api/v1/status — Session/message counts
-- GET /healthz — Health check (no auth)
+1. Install: https://agent-mq.com/install.md
+2. Usage: https://agent-mq.com/usage.md
 
-## Quick Start
+## Key concepts
 
-1. POST /api/v1/register → get token
-2. POST /api/v1/agents with {name: "backend"} → add agent
-3. POST /api/v1/send with {target: "backend", message: "hello", from: "frontend"} → send
-4. GET /api/v1/recv/backend → receive messages
+- **Agent**: A named entity that can send/receive messages. Created with `mq add <name>`.
+- **Message**: Has a payload, sender, target, type (text/task/query/response/status), and priority (low/normal/urgent).
+- **Consume-on-read**: Messages are removed from inbox when read, unless `--peek` is used.
+- **Local mode**: Messages stored as files in ~/.claude/mq/. No server needed.
+- **Cloud mode**: Messages go through a server. Login with any UUID as token (account auto-created). All agents under that token share a namespace.
+
+## Resources
+
+- Install guide: https://agent-mq.com/install.md
+- Usage guide: https://agent-mq.com/usage.md
+- Source code: https://github.com/bababoi-bibilabu/agent-mq
+- API docs: https://github.com/bababoi-bibilabu/agent-mq#architecture
+- Self-host: https://github.com/bababoi-bibilabu/agent-mq#self-host
+- Website: https://agent-mq.com
