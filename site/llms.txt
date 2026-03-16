@@ -15,7 +15,7 @@ agent-mq lets multiple AI coding sessions (Claude Code, Codex, Cursor, etc.) sen
 
 - **Agent**: A named entity that can send/receive messages. Created with `mq add <name>`.
 - **Message**: Has a payload, sender, target, type (text/task/query/response/status), and priority (low/normal/urgent).
-- **Consume-on-read**: Messages are removed from inbox when read, unless `--peek` is used.
+- **Consume-on-read**: Messages are removed from inbox when read.
 - **UUID-based isolation**: Each user generates their own UUID as token. Agents under the same token can communicate. Different tokens are completely isolated — agents cannot see each other.
 
 ## Resources

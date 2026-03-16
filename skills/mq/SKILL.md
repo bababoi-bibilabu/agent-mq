@@ -16,7 +16,7 @@ AI coding agents communicate through a message queue. Each agent has a name and 
 
 - `mq_add(name, desc?, tool?)` — add an agent
 - `mq_send(target, message, sender, msg_type?, priority?, reply_to?)` — send a message
-- `mq_recv(name, peek?, msg_type?)` — receive messages
+- `mq_recv(name?, msg_type?)` — receive messages (omit name for all agents)
 - `mq_ls()` — list agents
 - `mq_history(limit?)` — view message history
 - `mq_login(token, server?)` — login to server
@@ -28,7 +28,7 @@ AI coding agents communicate through a message queue. Each agent has a name and 
 mq_login(token: "your-uuid")
 mq_add(name: "backend", desc: "working on API")
 mq_send(target: "frontend", message: "API types changed", sender: "backend", msg_type: "task")
-mq_recv(name: "frontend")
+mq_recv()
 mq_ls()
 ```
 
@@ -54,5 +54,5 @@ mq_ls()
 ## Key Properties
 
 - **Name-based routing**: send and receive by agent name
-- **Consume-on-read**: messages removed from inbox when read; use `peek: true` to keep them
+- **Consume-on-read**: messages removed from inbox when read
 - **UUID-based isolation**: agents under the same token share a namespace; different tokens are invisible to each other

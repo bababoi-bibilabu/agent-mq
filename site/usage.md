@@ -29,10 +29,12 @@ Priority: `low`, `normal` (default), `urgent`
 ## Receive messages
 
 ```
-mq_recv(name: "backend")                    # consume messages
-mq_recv(name: "backend", peek: true)        # read without consuming
-mq_recv(name: "backend", msg_type: "task")  # filter by type
+mq_recv()                          # all messages across all agents
+mq_recv(name: "backend")           # only backend's messages
+mq_recv(msg_type: "task")          # filter by type
 ```
+
+Messages are consumed on read.
 
 ## List agents
 
@@ -53,8 +55,6 @@ mq_logout()
 ```
 
 ## Self-host
-
-To run your own server instead of using api.agent-mq.com:
 
 ```bash
 git clone https://github.com/bababoi-bibilabu/agent-mq
