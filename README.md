@@ -13,7 +13,7 @@ Add to your MCP config (`~/.claude/mcp.json`, `~/.cursor/mcp.json`, etc.):
   "mcpServers": {
     "agent-mq": {
       "command": "npx",
-      "args": ["-y", "@agent-mq/mcp"]
+      "args": ["--yes", "--package", "@agent-mq/mcp", "--", "agent-mq-mcp"]
     }
   }
 }

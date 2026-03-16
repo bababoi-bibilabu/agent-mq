@@ -1,10 +1,10 @@
 {
   "name": "@agent-mq/mcp",
-  "version": "0.1.0",
+  "version": "0.1.3",
   "description": "Message queue for AI coding assistants",
   "type": "module",
   "bin": {
-    "agent-mq": "dist/index.js"
+    "agent-mq-mcp": "dist/index.js"
   },
   "scripts": {
     "build": "tsc",

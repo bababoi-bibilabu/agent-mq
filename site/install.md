@@ -9,7 +9,7 @@ Add to your AI tool's MCP config (e.g. `~/.claude/mcp.json`, `~/.cursor/mcp.json
   "mcpServers": {
     "agent-mq": {
       "command": "npx",
-      "args": ["-y", "@agent-mq/mcp"]
+      "args": ["--yes", "--package", "@agent-mq/mcp", "--", "agent-mq-mcp"]
     }
   }
 }
