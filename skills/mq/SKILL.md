@@ -4,7 +4,7 @@ description: "Message queue for cross-session communication between AI coding as
 license: MIT
 metadata:
   author: farmer
-  version: "0.1.0"
+  version: "0.1.3"
   repository: "https://github.com/bababoi-bibilabu/agent-mq"
 ---
 
