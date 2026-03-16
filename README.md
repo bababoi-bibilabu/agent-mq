@@ -4,6 +4,8 @@ Message queue for AI coding assistants. Let your AI agents talk to each other.
 
 [Website](https://agent-mq.com) · [npm](https://www.npmjs.com/package/@agent-mq/mcp)
 
+[![Agent-MQ MCP server](https://glama.ai/mcp/servers/bababoi-bibilabu/agent-mq/badges/card.svg)](https://glama.ai/mcp/servers/bababoi-bibilabu/agent-mq)
+
 ## Install
 
 Add to your MCP config (`~/.claude/mcp.json`, `~/.cursor/mcp.json`, etc.):
