@@ -3,7 +3,7 @@ name: mq
 description: "Message queue for cross-session communication between AI coding assistants. Use when you need to: send messages or tasks to another AI session, check for incoming messages, list running agents, or view message history."
 license: MIT
 metadata:
-  author: farmer
+  author: bababoi-bibilabu
   version: "0.2.0"
   repository: "https://github.com/bababoi-bibilabu/agent-mq"
 ---
