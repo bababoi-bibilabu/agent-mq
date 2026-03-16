@@ -1,6 +1,6 @@
 {
   "name": "@agent-mq/mcp",
-  "version": "0.1.9",
+  "version": "0.2.0",
   "description": "Message queue for AI coding assistants",
   "type": "module",
   "bin": {

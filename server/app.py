@@ -24,7 +24,7 @@ from slowapi.util import get_remote_address
 
 DATA_DIR = Path(__file__).parent / "data"
 DB_PATH = str(DATA_DIR / "mq.db")
-VERSION = "0.1.9"
+VERSION = "0.2.0"
 MAX_MESSAGE_BYTES = 10_000  # 10 KB
 RATE_LIMIT = "10/second"
 

@@ -11,7 +11,7 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { z } from "zod";
 import * as client from "./client.js";
 
-const server = new McpServer({ name: "agent-mq", version: "0.1.9" });
+const server = new McpServer({ name: "agent-mq", version: "0.2.0" });
 
 server.tool("mq_add", "Add an agent to the message queue", {
   name: z.string(),
