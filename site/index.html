@@ -367,6 +367,7 @@
                 <div class="terminal-dot red"></div>
                 <div class="terminal-dot yellow"></div>
                 <div class="terminal-dot green"></div>
+                <span class="terminal-title">install</span>
                 <div class="install-tabs">
                     <button class="install-tab active" onclick="showTab('bash')">macOS / Linux</button>
                     <button class="install-tab" onclick="showTab('windows')">Windows</button>
@@ -375,51 +376,37 @@
                 </div>
             </div>
             <div id="tab-bash" class="install-panel active">
-                <pre><span class="t-prompt">$ </span><span class="t-cmd">curl</span> -fsSL https://agent-mq.com/install.sh | <span class="t-cmd">bash</span>
+                <pre><span class="t-prompt">$ </span><span class="t-cmd">curl</span> -fsSL https://agent-mq.com/install.sh | <span class="t-cmd">bash</span></pre>
+            </div>
+            <div id="tab-windows" class="install-panel">
+                <pre><span class="t-prompt">&gt; </span><span class="t-cmd">irm</span> https://agent-mq.com/install.ps1 | <span class="t-cmd">iex</span></pre>
+            </div>
+            <div id="tab-claude" class="install-panel">
+                <pre><span class="t-prompt">$ </span><span class="t-cmd">curl</span> -fsSL https://agent-mq.com/install.sh | <span class="t-cmd">bash</span></pre>
+            </div>
+            <div id="tab-codex" class="install-panel">
+                <pre><span class="t-prompt">$ </span><span class="t-cmd">curl</span> -fsSL https://agent-mq.com/install.sh | <span class="t-cmd">bash</span></pre>
+            </div>
+        </div>
 
-<span class="t-prompt">$ </span><span class="t-cmd">mq add</span> backend <span class="t-flag">--desc</span> <span class="t-str">"working on API"</span>
+        <div class="terminal">
+            <div class="terminal-bar">
+                <div class="terminal-dot red"></div>
+                <div class="terminal-dot yellow"></div>
+                <div class="terminal-dot green"></div>
+                <span class="terminal-title">usage</span>
+            </div>
+            <pre><span class="t-prompt">$ </span><span class="t-cmd">mq add</span> backend <span class="t-flag">--desc</span> <span class="t-str">"working on API"</span>
 <span class="t-comment">added backend</span>
 
-<span class="t-prompt">$ </span><span class="t-cmd">mq send</span> frontend <span class="t-str">"API types changed"</span> <span class="t-flag">--from</span> backend
+<span class="t-prompt">$ </span><span class="t-cmd">mq add</span> frontend <span class="t-flag">--desc</span> <span class="t-str">"working on UI"</span>
+<span class="t-comment">added frontend</span>
+
+<span class="t-prompt">$ </span><span class="t-cmd">mq send</span> frontend <span class="t-str">"API types changed"</span> <span class="t-flag">--from</span> backend <span class="t-flag">--type</span> task
 <span class="t-comment">sent b3d525bb... -> frontend</span>
 
 <span class="t-prompt">$ </span><span class="t-cmd">mq recv</span> frontend <span class="t-flag">--json</span>
-[{<span class="t-str">"from"</span>: <span class="t-str">"backend"</span>, <span class="t-str">"payload"</span>: <span class="t-str">"API types changed"</span>}]</pre>
-            </div>
-            <div id="tab-windows" class="install-panel">
-                <pre><span class="t-comment"># PowerShell</span>
-<span class="t-prompt">&gt; </span><span class="t-cmd">git clone</span> https://github.com/bababoi-bibilabu/agent-mq $HOME\.agent-mq
-<span class="t-prompt">&gt; </span><span class="t-cmd">python3</span> $HOME\.agent-mq\skills\mq\scripts\mq.py add backend
-<span class="t-comment">added backend</span>
-
-<span class="t-comment"># Or add an alias to your PowerShell profile:</span>
-<span class="t-prompt">&gt; </span><span class="t-cmd">Set-Alias</span> mq <span class="t-str">"python3 $HOME\.agent-mq\skills\mq\scripts\mq.py"</span></pre>
-            </div>
-            <div id="tab-claude" class="install-panel">
-                <pre><span class="t-comment"># Install as MCP server</span>
-<span class="t-prompt">$ </span><span class="t-cmd">git clone</span> https://github.com/bababoi-bibilabu/agent-mq ~/.agent-mq
-
-<span class="t-comment"># Add to ~/.claude/mcp.json:</span>
-{
-  <span class="t-str">"mcpServers"</span>: {
-    <span class="t-str">"agent-mq"</span>: {
-      <span class="t-str">"command"</span>: <span class="t-str">"python3"</span>,
-      <span class="t-str">"args"</span>: [<span class="t-str">"~/.agent-mq/skills/mq/scripts/mcp_server.py"</span>]
-    }
-  }
-}
-
-<span class="t-comment"># Then use MCP tools: mq_add, mq_send, mq_recv, mq_ls</span></pre>
-            </div>
-            <div id="tab-codex" class="install-panel">
-                <pre><span class="t-comment"># Install as skill</span>
-<span class="t-prompt">$ </span><span class="t-cmd">git clone</span> https://github.com/bababoi-bibilabu/agent-mq ~/.agent-mq
-<span class="t-prompt">$ </span><span class="t-cmd">ln</span> -sf ~/.agent-mq/skills/mq ~/.agents/skills/mq
-
-<span class="t-comment"># Codex will read SKILL.md and use the mq command</span>
-<span class="t-prompt">$ </span><span class="t-cmd">mq add</span> backend
-<span class="t-comment">added backend</span></pre>
-            </div>
+[{<span class="t-str">"from"</span>: <span class="t-str">"backend"</span>, <span class="t-str">"payload"</span>: <span class="t-str">"API types changed"</span>, <span class="t-str">"type"</span>: <span class="t-str">"task"</span>}]</pre>
         </div>
 
         <div class="features">
