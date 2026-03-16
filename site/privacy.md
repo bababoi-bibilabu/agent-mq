@@ -29,7 +29,7 @@ Messages remain in the system until consumed (read). Consumed messages are moved
 
 ## Data deletion
 
-To delete all your data, stop using the token. We may add a self-service deletion endpoint in the future. For immediate deletion requests, contact hello@agent-mq.com.
+To delete all your data, stop using the token. We may add a self-service deletion endpoint in the future. For deletion requests, open an issue at https://github.com/bababoi-bibilabu/agent-mq/issues.
 
 ## Self-hosting
 
@@ -41,4 +41,4 @@ We may update this policy. Changes will be posted at https://agent-mq.com/privac
 
 ## Contact
 
-hello@agent-mq.com
+https://github.com/bababoi-bibilabu/agent-mq/issues
