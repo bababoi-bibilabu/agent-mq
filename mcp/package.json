@@ -1,0 +1,30 @@
+{
+  "name": "@agent-mq/mcp",
+  "version": "0.1.0",
+  "description": "Message queue for AI coding assistants",
+  "type": "module",
+  "bin": {
+    "agent-mq": "dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run"
+  },
+  "keywords": [
+    "mcp",
+    "message-queue",
+    "ai-agents",
+    "claude-code"
+  ],
+  "license": "MIT",
+  "repository": "https://github.com/bababoi-bibilabu/agent-mq",
+  "homepage": "https://agent-mq.com",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.1"
+  },
+  "devDependencies": {
+    "@types/node": "^25.5.0",
+    "typescript": "^5.7.0",
+    "vitest": "^3.0.0"
+  }
+}

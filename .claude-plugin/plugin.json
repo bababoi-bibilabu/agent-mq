@@ -1,12 +1,11 @@
 {
   "name": "agent-mq",
   "version": "0.1.0",
-  "description": "Message queue for AI coding assistants. Enables cross-agent communication between Claude Code, Codex, Cursor, and other AI tools.",
+  "description": "Message queue for AI coding assistants.",
   "author": {
     "name": "farmer"
   },
   "license": "MIT",
   "keywords": ["message-queue", "multi-agent", "communication"],
-  "commands": "./commands",
   "mcpServers": "./.mcp.json"
 }

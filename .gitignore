@@ -3,7 +3,8 @@ __pycache__/
 *.pyo
 server/data/
 *.egg-info/
-dist/
 .env
 .cred/
 .wrangler/
+node_modules/
+mcp/dist/

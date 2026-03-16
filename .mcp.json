@@ -1,8 +1,8 @@
 {
   "mcpServers": {
     "agent-mq": {
-      "command": "python3",
-      "args": ["/home/farmer/claude_mq/skills/mq/scripts/mcp_server.py"]
+      "command": "npx",
+      "args": ["-y", "@agent-mq/mcp"]
     }
   }
 }

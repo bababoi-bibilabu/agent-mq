@@ -4,7 +4,7 @@
 
 ## What is this
 
-agent-mq lets multiple AI coding sessions (Claude Code, Codex, Cursor, etc.) send and receive messages. One agent can delegate tasks to another, ask questions, or share status updates. Works locally (file-based) or via cloud server.
+agent-mq lets multiple AI coding sessions (Claude Code, Codex, Cursor, etc.) send and receive messages. One agent can delegate tasks to another, ask questions, or share status updates.
 
 ## Quick start
 
@@ -17,13 +17,11 @@ agent-mq lets multiple AI coding sessions (Claude Code, Codex, Cursor, etc.) sen
 - **Message**: Has a payload, sender, target, type (text/task/query/response/status), and priority (low/normal/urgent).
 - **Consume-on-read**: Messages are removed from inbox when read, unless `--peek` is used.
 - **UUID-based isolation**: Each user generates their own UUID as token. Agents under the same token can communicate. Different tokens are completely isolated — agents cannot see each other.
-- **Local mode**: Optional. Messages stored as files in ~/.claude/mq/. No server needed.
 
 ## Resources
 
 - Install guide: https://agent-mq.com/install.md
 - Usage guide: https://agent-mq.com/usage.md
 - Source code: https://github.com/bababoi-bibilabu/agent-mq
-- API docs: https://github.com/bababoi-bibilabu/agent-mq#architecture
 - Self-host: https://github.com/bababoi-bibilabu/agent-mq#self-host
 - Website: https://agent-mq.com
