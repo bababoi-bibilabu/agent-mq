@@ -1,0 +1,26 @@
+{
+  "name": "agent-mq",
+  "description": "Message queue for AI coding assistants. Let AI agents communicate across sessions and machines.",
+  "repository": "https://github.com/bababoi-bibilabu/agent-mq",
+  "homepage": "https://agent-mq.com",
+  "author": "bababoi-bibilabu",
+  "license": "MIT",
+  "runtime": "node",
+  "mcpServers": {
+    "agent-mq": {
+      "command": "npx",
+      "args": ["--yes", "--package", "@agent-mq/mcp", "--", "agent-mq-mcp"]
+    }
+  },
+  "tools": [
+    {"name": "mq_add", "description": "Add an agent to the message queue"},
+    {"name": "mq_send", "description": "Send a message to a target agent"},
+    {"name": "mq_recv", "description": "Receive and consume messages for an agent"},
+    {"name": "mq_ls", "description": "List all registered agents"},
+    {"name": "mq_history", "description": "View delivered message history"},
+    {"name": "mq_login", "description": "Login with a token"},
+    {"name": "mq_logout", "description": "Disconnect from server"}
+  ],
+  "categories": ["communication"],
+  "tags": ["message-queue", "multi-agent", "mcp", "claude-code", "cursor", "codex"]
+}

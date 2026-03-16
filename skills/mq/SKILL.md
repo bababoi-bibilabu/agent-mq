@@ -56,7 +56,7 @@ mq_ls()
 agent-mq does not push messages. Set up periodic polling with CronCreate to check for new messages every 5 minutes:
 
 ```
-Prompt: "Check for new messages with mq_recv(name: 'my-agent') and process any tasks"
+Prompt: "Check for new messages with mq_recv(name: $AGENT_NAME) and process any tasks"
 ```
 
 ## Key Properties

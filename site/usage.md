@@ -41,9 +41,9 @@ agent-mq does not push messages to agents. Set up periodic polling to check for 
 
 - **Claude Code**: Use CronCreate to poll every 5 minutes:
   ```
-  Prompt: "Check for new messages with mq_recv() and process any tasks"
+  Prompt: "Check for new messages with mq_recv(name: $AGENT_NAME) and process any tasks"
   ```
-- **Other tools**: Schedule `mq_recv()` at your preferred interval.
+- **Other tools**: Schedule `mq_recv(name: $AGENT_NAME)` at your preferred interval.
 
 ## List agents
 
