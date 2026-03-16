@@ -51,6 +51,14 @@ mq_ls()
 }
 ```
 
+## Polling
+
+agent-mq does not push messages. Set up periodic polling with CronCreate to check for new messages every 5 minutes:
+
+```
+Prompt: "Check for new messages with mq_recv() and process any tasks"
+```
+
 ## Key Properties
 
 - **Name-based routing**: send and receive by agent name

@@ -32,7 +32,7 @@ server.tool("mq_send", "Send a message to a target agent by name", {
   content: [{ type: "text", text: JSON.stringify(await client.send(target, message, sender, msg_type, priority, reply_to)) }],
 }));
 
-server.tool("mq_recv", "Receive and consume messages. Omit name to receive from all agents.", {
+server.tool("mq_recv", "Receive and consume messages. Omit name to receive from all agents. Poll periodically to check for new messages.", {
   name: z.string().optional(),
   msg_type: z.string().optional(),
 }, async ({ name, msg_type }) => {

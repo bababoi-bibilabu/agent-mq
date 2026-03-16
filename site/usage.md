@@ -36,6 +36,16 @@ mq_recv(msg_type: "task")          # filter by type
 
 Messages are consumed on read.
 
+## Polling for messages
+
+agent-mq does not push messages to agents. Set up periodic polling to check for new messages:
+
+- **Claude Code**: Use CronCreate to poll every 5 minutes:
+  ```
+  Prompt: "Check for new messages with mq_recv() and process any tasks"
+  ```
+- **Other tools**: Schedule `mq_recv()` at your preferred interval.
+
 ## List agents
 
 ```
