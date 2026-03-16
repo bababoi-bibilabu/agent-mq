@@ -6,7 +6,7 @@ import { readFileSync, writeFileSync, mkdirSync, existsSync } from "fs";
 import { join } from "path";
 import { homedir } from "os";
 
-const VERSION = "0.1.8";
+const VERSION = "0.1.9";
 const CONFIG_DIR = join(homedir(), ".agent-mq");
 const CONFIG_FILE = join(CONFIG_DIR, "config.json");
 
