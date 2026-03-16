@@ -8,7 +8,7 @@
   "plugins": [
     {
       "name": "agent-mq",
-      "version": "0.1.5",
+      "version": "0.1.6",
       "description": "Message queue for AI coding assistants. Enables cross-agent communication between Claude Code, Codex, Cursor, and other AI tools.",
       "source": "./",
       "category": "communication"
