@@ -41,14 +41,17 @@ async function api(method: string, path: string, body?: unknown): Promise<unknow
   };
   if (cfg.token) headers["Authorization"] = `Bearer ${cfg.token}`;
 
-  const opts = { method, headers, body: body ? JSON.stringify(body) : undefined };
+  const opts = {
+    method, headers,
+    body: body ? JSON.stringify(body) : undefined,
+    signal: AbortSignal.timeout(10000),
+  };
   let res: Response;
   try {
     res = await fetch(url, opts);
   } catch {
-    // Retry once — server may be cold-starting
-    await new Promise(r => setTimeout(r, 3000));
-    res = await fetch(url, opts);
+    // Retry once on timeout/connection failure
+    res = await fetch(url, { ...opts, signal: AbortSignal.timeout(15000) });
   }
 
   if (!res.ok) {
