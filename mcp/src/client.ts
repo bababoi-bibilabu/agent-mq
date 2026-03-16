@@ -41,11 +41,15 @@ async function api(method: string, path: string, body?: unknown): Promise<unknow
   };
   if (cfg.token) headers["Authorization"] = `Bearer ${cfg.token}`;
 
-  const res = await fetch(url, {
-    method,
-    headers,
-    body: body ? JSON.stringify(body) : undefined,
-  });
+  const opts = { method, headers, body: body ? JSON.stringify(body) : undefined };
+  let res: Response;
+  try {
+    res = await fetch(url, opts);
+  } catch {
+    // Retry once — server may be cold-starting
+    await new Promise(r => setTimeout(r, 3000));
+    res = await fetch(url, opts);
+  }
 
   if (!res.ok) {
     let detail = res.statusText;

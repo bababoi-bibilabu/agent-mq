@@ -7,6 +7,7 @@ const SERVER_DIR = join(__dirname, "../../server");
 const TOKEN = "test-integration-" + Math.random().toString(36).slice(2);
 let serverProc: ChildProcess;
 let port: number;
+let originalConfig: client.Config;
 
 async function waitForServer(url: string, retries = 30): Promise<void> {
   for (let i = 0; i < retries; i++) {
@@ -20,6 +21,7 @@ async function waitForServer(url: string, retries = 30): Promise<void> {
 }
 
 beforeAll(async () => {
+  originalConfig = client.loadConfig();
   port = 18000 + Math.floor(Math.random() * 1000);
   serverProc = spawn("python3", ["-m", "uvicorn", "app:app", "--port", String(port)], {
     cwd: SERVER_DIR,
@@ -33,6 +35,7 @@ beforeAll(async () => {
 
 afterAll(() => {
   serverProc?.kill();
+  client.saveConfig(originalConfig);
 });
 
 describe("full flow", () => {
