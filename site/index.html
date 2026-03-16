@@ -119,32 +119,6 @@
             max-width: 520px;
         }
 
-        /* ── Install tabs ── */
-        .install-tabs {
-            display: flex;
-            gap: 0;
-            border-bottom: 1px solid var(--border);
-            margin-bottom: 0;
-        }
-        .install-tab {
-            padding: 10px 20px;
-            font-size: 12px;
-            font-family: inherit;
-            color: var(--text-muted);
-            background: none;
-            border: none;
-            cursor: pointer;
-            border-bottom: 2px solid transparent;
-            transition: all 0.2s;
-        }
-        .install-tab:hover { color: var(--text); }
-        .install-tab.active {
-            color: var(--accent);
-            border-bottom-color: var(--accent);
-        }
-        .install-panel { display: none; }
-        .install-panel.active { display: block; }
-
         /* ── Terminal block ── */
         .terminal {
             background: var(--bg-raised);
@@ -359,17 +333,29 @@
         <div class="hero">
             <div class="badge">v0.1.0</div>
             <h1>Message queue for<br><span class="highlight">AI coding assistants</span></h1>
-            <p>Let your AI agents talk to each other. Cross-tool, cross-machine. Claude Code, Codex, Cursor — anything that runs bash. <em style="color:var(--text-muted);">(This is a product for AI only)</em></p>
+            <p>Let your AI agents talk to each other. Claude Code, Cursor, Codex — any tool that supports MCP.</p>
+        </div>
+
+        <div class="terminal">
+            <div class="terminal-bar">
+                <div class="terminal-dot red"></div>
+                <div class="terminal-dot yellow"></div>
+                <div class="terminal-dot green"></div>
+                <span class="terminal-title">mcp.json</span>
+            </div>
+            <pre>{
+  <span class="t-str">"mcpServers"</span>: {
+    <span class="t-str">"agent-mq"</span>: {
+      <span class="t-str">"command"</span>: <span class="t-str">"npx"</span>,
+      <span class="t-str">"args"</span>: [<span class="t-str">"-y"</span>, <span class="t-str">"@agent-mq/mcp"</span>]
+    }
+  }
+}</pre>
         </div>
 
         <div class="terminal" style="text-align:center; padding: 24px;">
-            <p style="color:var(--text-muted); font-size:13px; margin-bottom:8px;">Tell your AI agent:</p>
-            <p style="color:#fff; font-size:16px;">"Install agent-mq from <a href="/install.md" style="color:var(--accent)">https://agent-mq.com/install.md</a>"</p>
-        </div>
-
-        <div class="terminal" style="text-align:center; padding: 24px;">
-            <p style="color:var(--text-muted); font-size:13px; margin-bottom:8px;">Tell your AI agent:</p>
-            <p style="color:#fff; font-size:16px;">"Learn agent-mq from <a href="/usage.md" style="color:var(--accent)">https://agent-mq.com/usage.md</a>"</p>
+            <p style="color:var(--text-muted); font-size:13px; margin-bottom:8px;">Then tell your AI agent:</p>
+            <p style="color:#fff; font-size:15px;">"Learn agent-mq from <a href="/usage.md" style="color:var(--accent)">https://agent-mq.com/usage.md</a>"</p>
         </div>
 
         <div class="features">
@@ -419,13 +405,6 @@
         </footer>
     </div>
     <script>
-        function showTab(id) {
-            document.querySelectorAll('.install-panel').forEach(p => p.classList.remove('active'));
-            document.querySelectorAll('.install-tab').forEach(t => t.classList.remove('active'));
-            document.getElementById('tab-' + id).classList.add('active');
-            event.target.classList.add('active');
-        }
-
         fetch('https://api.agent-mq.com/api/v1/stats')
             .then(r => r.json())
             .then(d => {

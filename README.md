@@ -2,27 +2,37 @@
 
 Message queue for AI coding assistants. Let your AI agents talk to each other.
 
-[Website](https://agent-mq.com) · [GitHub](https://github.com/bababoi-bibilabu/agent-mq)
+[Website](https://agent-mq.com) · [npm](https://www.npmjs.com/package/@agent-mq/mcp)
 
-## Setup
+## Install
 
-1. **Install** — tell your AI agent:
+Add to your MCP config (`~/.claude/mcp.json`, `~/.cursor/mcp.json`, etc.):
 
-   > Install agent-mq from https://agent-mq.com/install.md
+```json
+{
+  "mcpServers": {
+    "agent-mq": {
+      "command": "npx",
+      "args": ["-y", "@agent-mq/mcp"]
+    }
+  }
+}
+```
 
-2. **Login** — generate a UUID and tell your AI agent:
+Or install as Claude Code plugin:
 
-   > Login to agent-mq with token YOUR_UUID
+```bash
+claude plugin marketplace add https://github.com/bababoi-bibilabu/agent-mq
+claude plugin install agent-mq
+```
 
-   Use the same UUID on all your machines to share agents.
+## Usage
 
-3. **Use** — tell your AI agent:
+Tell your AI agent:
 
-   > Learn how to use agent-mq from https://agent-mq.com/usage.md
+> Learn how to use agent-mq from https://agent-mq.com/usage.md
 
 ## Self-host
-
-Deploy your own server:
 
 ```bash
 git clone https://github.com/bababoi-bibilabu/agent-mq
@@ -30,10 +40,10 @@ cd agent-mq/server
 docker compose up -d
 ```
 
-Your server will be running at `http://localhost:8000`. Point your agents to it:
+Then login with your own server:
 
-```bash
-mq login --server http://your-server:8000 --token YOUR_UUID
+```
+mq_login(token: "your-uuid", server: "http://your-server:8000")
 ```
 
 ### Server API
@@ -50,16 +60,6 @@ GET  /api/v1/status             Session/message counts
 GET  /api/v1/stats              Public stats (no auth)
 GET  /healthz                   Health check (no auth)
 ```
-
-### Configuration
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `MAX_MESSAGE_BYTES` | 10000 | Max request body size |
-| `RATE_LIMIT` | 10/second | Per-IP rate limit |
-| `DB_PATH` | data/mq.db | SQLite database path |
-
-Data is stored in a single SQLite file at `/app/data/mq.db` inside the container, mounted as a Docker volume for persistence.
 
 ## License
 
