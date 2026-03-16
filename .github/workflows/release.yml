@@ -15,7 +15,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
-      - run: pip install fastapi uvicorn slowapi pytest
+      - run: pip install fastapi uvicorn slowapi httpx pytest
       - run: python -m pytest tests/test_server.py -v
       - working-directory: mcp
         run: npm ci && npm run build && npx vitest run
