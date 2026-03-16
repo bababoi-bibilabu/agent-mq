@@ -1,12 +1,17 @@
 {
-  "name": "agent-mq",
+  "name": "agent-mq-marketplace",
   "description": "Message queue for AI coding assistants",
+  "owner": {
+    "name": "agent-mq",
+    "email": "hello@agent-mq.com"
+  },
   "plugins": [
     {
       "name": "agent-mq",
       "version": "0.1.0",
       "description": "Message queue for AI coding assistants. Enables cross-agent communication between Claude Code, Codex, Cursor, and other AI tools.",
-      "path": "."
+      "source": ".",
+      "category": "communication"
     }
   ]
 }
