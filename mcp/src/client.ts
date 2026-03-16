@@ -6,7 +6,7 @@ import { readFileSync, writeFileSync, mkdirSync, existsSync } from "fs";
 import { join } from "path";
 import { homedir } from "os";
 
-const VERSION = "0.1.7";
+const VERSION = "0.1.8";
 const CONFIG_DIR = join(homedir(), ".agent-mq");
 const CONFIG_FILE = join(CONFIG_DIR, "config.json");
 
@@ -78,10 +78,9 @@ export async function send(
   return api("POST", "/send", body);
 }
 
-export async function recv(name?: string, msgType?: string) {
+export async function recv(name: string, msgType?: string) {
   const params = msgType ? `?type=${msgType}` : "";
-  const path = name ? `/recv/${name}${params}` : `/recv${params}`;
-  return api("GET", path);
+  return api("GET", `/recv/${name}${params}`);
 }
 
 export async function ls() {

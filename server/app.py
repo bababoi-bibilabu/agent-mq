@@ -24,7 +24,7 @@ from slowapi.util import get_remote_address
 
 DATA_DIR = Path(__file__).parent / "data"
 DB_PATH = str(DATA_DIR / "mq.db")
-VERSION = "0.1.7"
+VERSION = "0.1.8"
 MAX_MESSAGE_BYTES = 10_000  # 10 KB
 RATE_LIMIT = "10/second"
 
@@ -246,45 +246,30 @@ def send(request: Request, req: SendRequest, user_id: str = Depends(get_token)):
     return {"status": "ok", "id": msg["id"], "to": req.target}
 
 
-@app.get("/api/v1/recv")
-def recv_all(request: Request, type: str | None = None, user_id: str = Depends(get_token)):
-    """Receive all messages across all agents."""
-    return _recv(user_id, None, type)
-
-
 @app.get("/api/v1/recv/{agent_name}")
 def recv(agent_name: str, request: Request, type: str | None = None, user_id: str = Depends(get_token)):
-    """Receive messages for a specific agent."""
-    return _recv(user_id, agent_name, type)
-
-
-def _recv(user_id: str, agent_name: str | None, type: str | None):
-    if agent_name:
-        rows = db.execute(
-            "SELECT agent_name, msg_id, data FROM inbox WHERE user_id = ? AND agent_name = ? ORDER BY ts",
-            (user_id, agent_name)).fetchall()
-    else:
-        rows = db.execute(
-            "SELECT agent_name, msg_id, data FROM inbox WHERE user_id = ? ORDER BY ts",
-            (user_id,)).fetchall()
+    """Receive and consume messages for a specific agent."""
+    rows = db.execute(
+        "SELECT msg_id, data FROM inbox WHERE user_id = ? AND agent_name = ? ORDER BY ts",
+        (user_id, agent_name)).fetchall()
 
     messages = []
-    keys = []
+    msg_ids = []
     for r in rows:
         msg = json.loads(r["data"])
         if type and msg.get("type", "text") != type:
             continue
         messages.append(msg)
-        keys.append((r["agent_name"], r["msg_id"]))
+        msg_ids.append(r["msg_id"])
 
-    for i, (aname, mid) in enumerate(keys):
+    for i, mid in enumerate(msg_ids):
         db.execute("INSERT INTO done (user_id, msg_id, data, ts) VALUES (?, ?, ?, ?)",
                    (user_id, mid, json.dumps(messages[i]), messages[i].get("ts", "")))
         db.execute("DELETE FROM inbox WHERE user_id = ? AND agent_name = ? AND msg_id = ?",
-                   (user_id, aname, mid))
-    if keys:
+                   (user_id, agent_name, mid))
+    if msg_ids:
         db.commit()
-        log_event("recv", extra={"count": len(keys)})
+        log_event("recv", extra={"count": len(msg_ids)})
 
     return messages
 

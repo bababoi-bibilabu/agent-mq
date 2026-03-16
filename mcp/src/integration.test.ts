@@ -73,21 +73,6 @@ describe("full flow", () => {
     expect(msgs.length).toBe(0);
   });
 
-  it("recv all agents", async () => {
-    await client.send("backend", "msg to backend", "frontend");
-    await client.send("frontend", "msg to frontend", "backend");
-
-    const msgs = await client.recv() as { payload: string; to: string }[];
-    expect(msgs.length).toBe(2);
-    const payloads = msgs.map(m => m.payload);
-    expect(payloads).toContain("msg to backend");
-    expect(payloads).toContain("msg to frontend");
-
-    // consumed
-    const msgs2 = await client.recv() as unknown[];
-    expect(msgs2.length).toBe(0);
-  });
-
   it("history shows consumed messages", async () => {
     const msgs = await client.history(50) as { payload: string }[];
     expect(msgs.length).toBeGreaterThan(0);

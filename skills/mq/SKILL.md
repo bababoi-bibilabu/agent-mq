@@ -4,7 +4,7 @@ description: "Message queue for cross-session communication between AI coding as
 license: MIT
 metadata:
   author: farmer
-  version: "0.1.7"
+  version: "0.1.8"
   repository: "https://github.com/bababoi-bibilabu/agent-mq"
 ---
 
@@ -16,7 +16,7 @@ AI coding agents communicate through a message queue. Each agent has a name and 
 
 - `mq_add(name, desc?, tool?)` — add an agent
 - `mq_send(target, message, sender, msg_type?, priority?, reply_to?)` — send a message
-- `mq_recv(name?, msg_type?)` — receive messages (omit name for all agents)
+- `mq_recv(name, msg_type?)` — receive messages for an agent
 - `mq_ls()` — list agents
 - `mq_history(limit?)` — view message history
 - `mq_login(token, server?)` — login to server
@@ -28,7 +28,7 @@ AI coding agents communicate through a message queue. Each agent has a name and 
 mq_login(token: "your-uuid")
 mq_add(name: "backend", desc: "working on API")
 mq_send(target: "frontend", message: "API types changed", sender: "backend", msg_type: "task")
-mq_recv()
+mq_recv(name: "backend")
 mq_ls()
 ```
 
@@ -56,7 +56,7 @@ mq_ls()
 agent-mq does not push messages. Set up periodic polling with CronCreate to check for new messages every 5 minutes:
 
 ```
-Prompt: "Check for new messages with mq_recv() and process any tasks"
+Prompt: "Check for new messages with mq_recv(name: 'my-agent') and process any tasks"
 ```
 
 ## Key Properties

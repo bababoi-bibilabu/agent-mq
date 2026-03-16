@@ -11,7 +11,7 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { z } from "zod";
 import * as client from "./client.js";
 
-const server = new McpServer({ name: "agent-mq", version: "0.1.7" });
+const server = new McpServer({ name: "agent-mq", version: "0.1.8" });
 
 server.tool("mq_add", "Add an agent to the message queue", {
   name: z.string(),
@@ -32,11 +32,11 @@ server.tool("mq_send", "Send a message to a target agent by name", {
   content: [{ type: "text", text: JSON.stringify(await client.send(target, message, sender, msg_type, priority, reply_to)) }],
 }));
 
-server.tool("mq_recv", "Receive and consume messages. Omit name to receive from all agents. Poll periodically to check for new messages.", {
-  name: z.string().optional(),
+server.tool("mq_recv", "Receive and consume messages for an agent. Poll periodically to check for new messages.", {
+  name: z.string(),
   msg_type: z.string().optional(),
 }, async ({ name, msg_type }) => {
-  const msgs = await client.recv(name || undefined, msg_type || undefined) as unknown[];
+  const msgs = await client.recv(name, msg_type || undefined) as unknown[];
   return { content: msgs.map(m => ({ type: "text" as const, text: JSON.stringify(m) })) };
 });
 

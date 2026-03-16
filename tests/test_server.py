@@ -179,20 +179,8 @@ def test_recv_type_filter():
     assert msgs[0]["payload"] == "task msg"
 
 
-def test_recv_all():
-    _add("a1")
-    _add("a2")
-    _send("a1", "msg1", "s")
-    _send("a2", "msg2", "s")
-
-    msgs = _get("/api/v1/recv").json()
-    assert len(msgs) == 2
-    assert _get("/api/v1/recv").json() == []
-
-
 def test_recv_empty():
     assert _get("/api/v1/recv/no-such").json() == []
-    assert _get("/api/v1/recv").json() == []
 
 
 # ── Agents list ──
