@@ -32,12 +32,11 @@ server.tool("mq_send", "Send a message to a target agent by name", {
   content: [{ type: "text", text: JSON.stringify(await client.send(target, message, sender, msg_type, priority, reply_to)) }],
 }));
 
-server.tool("mq_recv", "Check inbox for messages. Consumed on read unless peek=true", {
-  name: z.string(),
-  peek: z.boolean().default(false),
+server.tool("mq_recv", "Receive and consume messages. Omit name to receive from all agents.", {
+  name: z.string().optional(),
   msg_type: z.string().optional(),
-}, async ({ name, peek, msg_type }) => {
-  const msgs = await client.recv(name, peek, msg_type || undefined) as unknown[];
+}, async ({ name, msg_type }) => {
+  const msgs = await client.recv(name || undefined, msg_type || undefined) as unknown[];
   return { content: msgs.map(m => ({ type: "text" as const, text: JSON.stringify(m) })) };
 });
 

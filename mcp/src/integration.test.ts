@@ -60,7 +60,7 @@ describe("full flow", () => {
     expect(result.to).toBe("backend");
   });
 
-  it("recv message", async () => {
+  it("recv by name", async () => {
     const msgs = await client.recv("backend") as { payload: string; from: string; type: string }[];
     expect(msgs.length).toBe(1);
     expect(msgs[0].payload).toBe("hello from frontend");
@@ -73,21 +73,19 @@ describe("full flow", () => {
     expect(msgs.length).toBe(0);
   });
 
-  it("peek does not consume", async () => {
-    await client.send("backend", "peek test", "frontend");
+  it("recv all agents", async () => {
+    await client.send("backend", "msg to backend", "frontend");
+    await client.send("frontend", "msg to frontend", "backend");
 
-    const msgs1 = await client.recv("backend", true) as { payload: string }[];
-    expect(msgs1.length).toBe(1);
-    expect(msgs1[0].payload).toBe("peek test");
+    const msgs = await client.recv() as { payload: string; to: string }[];
+    expect(msgs.length).toBe(2);
+    const payloads = msgs.map(m => m.payload);
+    expect(payloads).toContain("msg to backend");
+    expect(payloads).toContain("msg to frontend");
 
-    const msgs2 = await client.recv("backend", true) as unknown[];
-    expect(msgs2.length).toBe(1);
-
-    const msgs3 = await client.recv("backend") as unknown[];
-    expect(msgs3.length).toBe(1);
-
-    const msgs4 = await client.recv("backend") as unknown[];
-    expect(msgs4.length).toBe(0);
+    // consumed
+    const msgs2 = await client.recv() as unknown[];
+    expect(msgs2.length).toBe(0);
   });
 
   it("history shows consumed messages", async () => {

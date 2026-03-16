@@ -169,29 +169,30 @@ def test_recv():
     assert _recv("recv-t") == []
 
 
-def test_recv_peek():
-    _add("peek-t")
-    _send("peek-t", "peek", "s")
-
-    for _ in range(2):
-        assert len(_recv("peek-t", peek="true")) == 1
-
-    _recv("peek-t")
-    assert _recv("peek-t") == []
-
-
 def test_recv_type_filter():
     _add("filter-t")
     _send("filter-t", "text msg", "s", type="text")
     _send("filter-t", "task msg", "s", type="task")
 
-    msgs = _recv("filter-t", peek="true", type="task")
+    msgs = _recv("filter-t", type="task")
     assert len(msgs) == 1
     assert msgs[0]["payload"] == "task msg"
 
 
+def test_recv_all():
+    _add("a1")
+    _add("a2")
+    _send("a1", "msg1", "s")
+    _send("a2", "msg2", "s")
+
+    msgs = _get("/api/v1/recv").json()
+    assert len(msgs) == 2
+    assert _get("/api/v1/recv").json() == []
+
+
 def test_recv_empty():
     assert _get("/api/v1/recv/no-such").json() == []
+    assert _get("/api/v1/recv").json() == []
 
 
 # ── Agents list ──

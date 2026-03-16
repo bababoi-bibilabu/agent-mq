@@ -246,36 +246,45 @@ def send(request: Request, req: SendRequest, user_id: str = Depends(get_token)):
     return {"status": "ok", "id": msg["id"], "to": req.target}
 
 
+@app.get("/api/v1/recv")
+def recv_all(request: Request, type: str | None = None, user_id: str = Depends(get_token)):
+    """Receive all messages across all agents."""
+    return _recv(user_id, None, type)
+
+
 @app.get("/api/v1/recv/{agent_name}")
-def recv(agent_name: str, request: Request, peek: bool = False, type: str | None = None,
-         user_id: str = Depends(get_token)):
-    if type:
+def recv(agent_name: str, request: Request, type: str | None = None, user_id: str = Depends(get_token)):
+    """Receive messages for a specific agent."""
+    return _recv(user_id, agent_name, type)
+
+
+def _recv(user_id: str, agent_name: str | None, type: str | None):
+    if agent_name:
         rows = db.execute(
-            "SELECT msg_id, data FROM inbox WHERE user_id = ? AND agent_name = ? ORDER BY ts",
+            "SELECT agent_name, msg_id, data FROM inbox WHERE user_id = ? AND agent_name = ? ORDER BY ts",
             (user_id, agent_name)).fetchall()
-        messages = []
-        msg_ids = []
-        for r in rows:
-            msg = json.loads(r["data"])
-            if msg.get("type", "text") != type:
-                continue
-            messages.append(msg)
-            msg_ids.append(r["msg_id"])
     else:
         rows = db.execute(
-            "SELECT msg_id, data FROM inbox WHERE user_id = ? AND agent_name = ? ORDER BY ts",
-            (user_id, agent_name)).fetchall()
-        messages = [json.loads(r["data"]) for r in rows]
-        msg_ids = [r["msg_id"] for r in rows]
+            "SELECT agent_name, msg_id, data FROM inbox WHERE user_id = ? ORDER BY ts",
+            (user_id,)).fetchall()
 
-    if not peek and msg_ids:
-        for i, mid in enumerate(msg_ids):
-            db.execute("INSERT INTO done (user_id, msg_id, data, ts) VALUES (?, ?, ?, ?)",
-                       (user_id, mid, json.dumps(messages[i]), messages[i].get("ts", "")))
-            db.execute("DELETE FROM inbox WHERE user_id = ? AND agent_name = ? AND msg_id = ?",
-                       (user_id, agent_name, mid))
+    messages = []
+    keys = []
+    for r in rows:
+        msg = json.loads(r["data"])
+        if type and msg.get("type", "text") != type:
+            continue
+        messages.append(msg)
+        keys.append((r["agent_name"], r["msg_id"]))
+
+    for i, (aname, mid) in enumerate(keys):
+        db.execute("INSERT INTO done (user_id, msg_id, data, ts) VALUES (?, ?, ?, ?)",
+                   (user_id, mid, json.dumps(messages[i]), messages[i].get("ts", "")))
+        db.execute("DELETE FROM inbox WHERE user_id = ? AND agent_name = ? AND msg_id = ?",
+                   (user_id, aname, mid))
+    if keys:
         db.commit()
-        log_event("recv", extra={"count": len(msg_ids)})
+        log_event("recv", extra={"count": len(keys)})
 
     return messages
 
