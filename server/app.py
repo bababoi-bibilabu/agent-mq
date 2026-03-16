@@ -14,6 +14,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request, Response, Depends
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from slowapi import Limiter
 from slowapi.errors import RateLimitExceeded
@@ -71,6 +72,13 @@ def open_db():
             id TEXT PRIMARY KEY,
             data TEXT NOT NULL
         );
+        CREATE TABLE IF NOT EXISTS counters (
+            key TEXT PRIMARY KEY,
+            value INTEGER NOT NULL DEFAULT 0
+        );
+        INSERT OR IGNORE INTO counters (key, value) VALUES ('users', 0);
+        INSERT OR IGNORE INTO counters (key, value) VALUES ('agents', 0);
+        INSERT OR IGNORE INTO counters (key, value) VALUES ('messages', 0);
     """)
     conn.commit()
     return conn
@@ -149,6 +157,7 @@ app = FastAPI(
     lifespan=lifespan,
 )
 app.state.limiter = limiter
+app.add_middleware(CORSMiddleware, allow_origins=["https://agent-mq.com"], allow_methods=["GET"], allow_headers=["*"])
 
 
 def _rate_limit_handler(request: Request, exc: RateLimitExceeded):
@@ -184,36 +193,10 @@ def healthz():
     return {"status": "ok"}
 
 
-LLMS_TXT = """# agent-mq
-
-> Message queue for AI coding assistants
-
-agent-mq enables cross-agent communication between Claude Code, Codex, Cursor, and other AI tools.
-
-## API
-
-All endpoints except /api/v1/register require `Authorization: Bearer <token>` header.
-
-- POST /api/v1/register — Create account, returns {token}
-- POST /api/v1/agents — Add agent {name, desc?, tool?}
-- POST /api/v1/send — Send message {target, message, from, type?, priority?, reply_to?}
-- GET /api/v1/recv/{name}?peek=false&type= — Receive messages
-- GET /api/v1/agents — List agents
-- GET /api/v1/history?limit=20 — Message history
-- GET /api/v1/status — Session/message counts
-
-## Quick Start
-
-1. POST /api/v1/register → get token
-2. POST /api/v1/agents with {name: "backend"} → add agent
-3. POST /api/v1/send with {target: "backend", message: "hello", from: "frontend"} → send
-4. GET /api/v1/recv/backend → receive messages
-""".strip()
-
-
-@app.get("/llms.txt", response_class=Response)
+@app.get("/llms.txt")
 def llms_txt():
-    return Response(content=LLMS_TXT, media_type="text/plain")
+    from starlette.responses import RedirectResponse
+    return RedirectResponse("https://agent-mq.com/llms.txt")
 
 
 @app.post("/api/v1/register")
@@ -224,6 +207,7 @@ def register_account(request: Request):
     user_id = str(uuid.uuid4())
     db.execute("INSERT INTO users (token, user_id, created_at) VALUES (?, ?, ?)",
                (token, user_id, now_iso()))
+    db.execute("UPDATE counters SET value = value + 1 WHERE key = 'users'")
     db.commit()
     log_event("register_account")
     return {"token": token}
@@ -232,9 +216,12 @@ def register_account(request: Request):
 @app.post("/api/v1/agents")
 @limiter.limit(RATE_LIMIT)
 def add_agent(request: Request, req: AgentRequest, user_id: str = Depends(get_user_id)):
+    existing = db.execute("SELECT 1 FROM agents WHERE user_id = ? AND name = ?", (user_id, req.name)).fetchone()
     db.execute(
         "INSERT OR REPLACE INTO agents (user_id, name, desc, tool, registered_at) VALUES (?, ?, ?, ?, ?)",
         (user_id, req.name, req.desc, req.tool, now_iso()))
+    if not existing:
+        db.execute("UPDATE counters SET value = value + 1 WHERE key = 'agents'")
     db.commit()
     log_event("add_agent", req.tool)
     return {"status": "ok", "name": req.name}
@@ -262,6 +249,7 @@ def send(request: Request, req: SendRequest, user_id: str = Depends(get_user_id)
 
     db.execute("INSERT INTO inbox (user_id, agent_name, msg_id, data, ts) VALUES (?, ?, ?, ?, ?)",
                (user_id, req.target, msg["id"], json.dumps(msg), msg["ts"]))
+    db.execute("UPDATE counters SET value = value + 1 WHERE key = 'messages'")
     db.commit()
     log_event("send", extra={"msg_type": req.type, "priority": req.priority})
     return {"status": "ok", "id": msg["id"], "to": req.target}
@@ -344,6 +332,14 @@ def history(request: Request, limit: int = 20, user_id: str = Depends(get_user_i
     rows = db.execute("SELECT data FROM done WHERE user_id = ? ORDER BY ts DESC LIMIT ?",
                       (user_id, limit)).fetchall()
     return [json.loads(r["data"]) for r in rows]
+
+
+@app.get("/api/v1/stats")
+def public_stats():
+    """Public stats — no auth required. O(1) via counters."""
+    rows = db.execute("SELECT key, value FROM counters").fetchall()
+    c = {r["key"]: r["value"] for r in rows}
+    return {"users": c.get("users", 0), "agents": c.get("agents", 0), "messages": c.get("messages", 0)}
 
 
 @app.get("/api/v1/analytics/summary")

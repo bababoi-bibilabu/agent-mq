@@ -5,3 +5,5 @@ server/data/
 *.egg-info/
 dist/
 .env
+.cred/
+.wrangler/

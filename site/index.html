@@ -1,0 +1,514 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>agent-mq — Message queue for AI coding assistants</title>
+    <meta name="description" content="Let your AI agents talk to each other. Cross-tool message queue for Claude Code, Codex, Cursor and any CLI-based AI tool. Local or cloud, zero dependencies.">
+    <meta name="keywords" content="message queue, AI agents, Claude Code, Codex, Cursor, MCP, multi-agent, cross-session communication">
+    <link rel="canonical" href="https://agent-mq.com">
+
+    <!-- Open Graph -->
+    <meta property="og:title" content="agent-mq — Message queue for AI coding assistants">
+    <meta property="og:description" content="Let your AI agents talk to each other. Cross-tool, cross-machine. Zero dependencies.">
+    <meta property="og:url" content="https://agent-mq.com">
+    <meta property="og:type" content="website">
+
+    <!-- Twitter -->
+    <meta name="twitter:card" content="summary">
+    <meta name="twitter:title" content="agent-mq">
+    <meta name="twitter:description" content="Message queue for AI coding assistants. Cross-tool, cross-machine.">
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg: #0c0c0c;
+            --bg-raised: #141414;
+            --bg-hover: #1a1a1a;
+            --border: #222;
+            --text: #d4d4d4;
+            --text-muted: #666;
+            --accent: #22d3ee;
+            --accent-dim: #0e7490;
+            --orange: #f97316;
+            --green: #22c55e;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'IBM Plex Mono', monospace;
+            background: var(--bg);
+            color: var(--text);
+            line-height: 1.7;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        a { color: var(--accent); text-decoration: none; }
+        a:hover { text-decoration: underline; }
+        code { color: var(--accent); font-family: inherit; }
+
+        .container { max-width: 760px; margin: 0 auto; padding: 0 24px; }
+
+        /* ── Nav ── */
+        nav {
+            position: sticky;
+            top: 0;
+            z-index: 50;
+            background: rgba(12, 12, 12, 0.85);
+            backdrop-filter: blur(12px);
+            border-bottom: 1px solid var(--border);
+            padding: 16px 0;
+        }
+        nav .container {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        nav .logo {
+            font-weight: 700;
+            font-size: 16px;
+            color: #fff;
+            letter-spacing: -0.5px;
+        }
+        nav .logo span { color: var(--accent); }
+        nav .links { display: flex; gap: 24px; font-size: 13px; }
+        nav .links a { color: var(--text-muted); transition: color 0.2s; }
+        nav .links a:hover { color: var(--text); text-decoration: none; }
+
+        /* ── Hero ── */
+        .hero {
+            padding: 100px 0 60px;
+            position: relative;
+        }
+        .hero::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 600px;
+            height: 400px;
+            background: radial-gradient(ellipse at center, rgba(34, 211, 238, 0.06) 0%, transparent 70%);
+            pointer-events: none;
+        }
+        .badge {
+            display: inline-block;
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 1.5px;
+            color: var(--accent);
+            border: 1px solid var(--accent-dim);
+            padding: 4px 12px;
+            border-radius: 4px;
+            margin-bottom: 24px;
+        }
+        .hero h1 {
+            font-size: 42px;
+            font-weight: 700;
+            color: #fff;
+            letter-spacing: -1.5px;
+            line-height: 1.15;
+        }
+        .hero h1 .highlight { color: var(--accent); }
+        .hero p {
+            font-size: 15px;
+            color: var(--text-muted);
+            margin-top: 16px;
+            max-width: 520px;
+        }
+
+        /* ── Install tabs ── */
+        .install-tabs {
+            display: flex;
+            gap: 0;
+            border-bottom: 1px solid var(--border);
+            margin-bottom: 0;
+        }
+        .install-tab {
+            padding: 10px 20px;
+            font-size: 12px;
+            font-family: inherit;
+            color: var(--text-muted);
+            background: none;
+            border: none;
+            cursor: pointer;
+            border-bottom: 2px solid transparent;
+            transition: all 0.2s;
+        }
+        .install-tab:hover { color: var(--text); }
+        .install-tab.active {
+            color: var(--accent);
+            border-bottom-color: var(--accent);
+        }
+        .install-panel { display: none; }
+        .install-panel.active { display: block; }
+
+        /* ── Terminal block ── */
+        .terminal {
+            background: var(--bg-raised);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            margin: 48px 0;
+            overflow: hidden;
+        }
+        .terminal-bar {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 12px 16px;
+            border-bottom: 1px solid var(--border);
+            background: #111;
+        }
+        .terminal-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: #333;
+        }
+        .terminal-dot.red { background: #ef4444; }
+        .terminal-dot.yellow { background: #eab308; }
+        .terminal-dot.green { background: #22c55e; }
+        .terminal-title {
+            font-size: 11px;
+            color: var(--text-muted);
+            margin-left: 8px;
+        }
+        .terminal pre {
+            padding: 20px;
+            font-size: 13px;
+            line-height: 1.8;
+            overflow-x: auto;
+        }
+        .t-comment { color: #444; }
+        .t-cmd { color: var(--accent); }
+        .t-flag { color: var(--orange); }
+        .t-str { color: var(--green); }
+        .t-prompt { color: #555; user-select: none; }
+
+        /* ── Features grid ── */
+        .features {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1px;
+            background: var(--border);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            overflow: hidden;
+            margin: 48px 0;
+        }
+        .feature {
+            background: var(--bg-raised);
+            padding: 28px;
+            transition: background 0.2s;
+        }
+        .feature:hover { background: var(--bg-hover); }
+        .feature-icon {
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: var(--accent-dim);
+            margin-bottom: 12px;
+        }
+        .feature h3 {
+            font-size: 14px;
+            font-weight: 600;
+            color: #fff;
+            margin-bottom: 6px;
+        }
+        .feature p {
+            font-size: 12px;
+            color: var(--text-muted);
+            line-height: 1.6;
+        }
+
+        /* ── Stats ── */
+        .stats {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 1px;
+            background: var(--border);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            overflow: hidden;
+            margin: 48px 0;
+        }
+        .stat {
+            background: var(--bg-raised);
+            padding: 24px;
+            text-align: center;
+        }
+        .stat-num {
+            font-size: 32px;
+            font-weight: 700;
+            color: var(--accent);
+            line-height: 1;
+        }
+        .stat-label {
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: var(--text-muted);
+            margin-top: 8px;
+        }
+
+        /* ── API section ── */
+        .api { margin: 64px 0; }
+        .api h2 {
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            color: var(--text-muted);
+            margin-bottom: 20px;
+        }
+        .api-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+        }
+        .api-table tr {
+            border-bottom: 1px solid var(--border);
+        }
+        .api-table td {
+            padding: 10px 0;
+            vertical-align: top;
+        }
+        .api-table .method {
+            width: 60px;
+            font-weight: 600;
+            color: var(--green);
+        }
+        .api-table .method.post { color: var(--orange); }
+        .api-table .path { color: #fff; }
+        .api-table .desc { color: var(--text-muted); text-align: right; }
+
+        /* ── Cloud section ── */
+        .cloud {
+            background: var(--bg-raised);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 32px;
+            margin: 48px 0;
+        }
+        .cloud h2 {
+            font-size: 14px;
+            font-weight: 600;
+            color: #fff;
+            margin-bottom: 4px;
+        }
+        .cloud .sub {
+            font-size: 12px;
+            color: var(--text-muted);
+            margin-bottom: 20px;
+        }
+        .cloud pre {
+            font-size: 13px;
+            line-height: 1.8;
+        }
+
+        /* ── Footer ── */
+        footer {
+            border-top: 1px solid var(--border);
+            padding: 32px 0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 12px;
+            color: var(--text-muted);
+            margin-top: 48px;
+        }
+        footer a { color: var(--text-muted); }
+        footer a:hover { color: var(--text); }
+        .footer-links { display: flex; gap: 20px; }
+
+        /* ── Animations ── */
+        @keyframes fadeUp {
+            from { opacity: 0; transform: translateY(12px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .hero, .terminal, .features, .api, .cloud {
+            animation: fadeUp 0.5s ease-out both;
+        }
+        .terminal { animation-delay: 0.1s; }
+        .features { animation-delay: 0.2s; }
+        .api { animation-delay: 0.3s; }
+        .cloud { animation-delay: 0.4s; }
+
+        /* ── Mobile ── */
+        @media (max-width: 600px) {
+            .hero h1 { font-size: 28px; }
+            .features { grid-template-columns: 1fr; }
+            .api-table .desc { display: none; }
+            footer { flex-direction: column; gap: 12px; }
+        }
+    </style>
+</head>
+<body>
+    <nav>
+        <div class="container">
+            <div class="logo">agent<span>-mq</span></div>
+            <div class="links">
+                <a href="https://github.com/bababoi-bibilabu/agent-mq">github</a>
+                <a href="https://github.com/bababoi-bibilabu/agent-mq#install">docs</a>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container">
+        <div class="hero">
+            <div class="badge">v0.1.0</div>
+            <h1>Message queue for<br><span class="highlight">AI coding assistants</span></h1>
+            <p>Let your AI agents talk to each other. Cross-tool, cross-machine. Claude Code, Codex, Cursor — anything that runs bash.</p>
+        </div>
+
+        <div class="terminal">
+            <div class="terminal-bar">
+                <div class="terminal-dot red"></div>
+                <div class="terminal-dot yellow"></div>
+                <div class="terminal-dot green"></div>
+                <div class="install-tabs">
+                    <button class="install-tab active" onclick="showTab('bash')">macOS / Linux</button>
+                    <button class="install-tab" onclick="showTab('windows')">Windows</button>
+                    <button class="install-tab" onclick="showTab('claude')">Claude Code</button>
+                    <button class="install-tab" onclick="showTab('codex')">Codex</button>
+                </div>
+            </div>
+            <div id="tab-bash" class="install-panel active">
+                <pre><span class="t-prompt">$ </span><span class="t-cmd">curl</span> -fsSL https://agent-mq.com/install.sh | <span class="t-cmd">bash</span>
+
+<span class="t-prompt">$ </span><span class="t-cmd">mq add</span> backend <span class="t-flag">--desc</span> <span class="t-str">"working on API"</span>
+<span class="t-comment">added backend</span>
+
+<span class="t-prompt">$ </span><span class="t-cmd">mq send</span> frontend <span class="t-str">"API types changed"</span> <span class="t-flag">--from</span> backend
+<span class="t-comment">sent b3d525bb... -> frontend</span>
+
+<span class="t-prompt">$ </span><span class="t-cmd">mq recv</span> frontend <span class="t-flag">--json</span>
+[{<span class="t-str">"from"</span>: <span class="t-str">"backend"</span>, <span class="t-str">"payload"</span>: <span class="t-str">"API types changed"</span>}]</pre>
+            </div>
+            <div id="tab-windows" class="install-panel">
+                <pre><span class="t-comment"># PowerShell</span>
+<span class="t-prompt">&gt; </span><span class="t-cmd">git clone</span> https://github.com/bababoi-bibilabu/agent-mq $HOME\.agent-mq
+<span class="t-prompt">&gt; </span><span class="t-cmd">python3</span> $HOME\.agent-mq\skills\mq\scripts\mq.py add backend
+<span class="t-comment">added backend</span>
+
+<span class="t-comment"># Or add an alias to your PowerShell profile:</span>
+<span class="t-prompt">&gt; </span><span class="t-cmd">Set-Alias</span> mq <span class="t-str">"python3 $HOME\.agent-mq\skills\mq\scripts\mq.py"</span></pre>
+            </div>
+            <div id="tab-claude" class="install-panel">
+                <pre><span class="t-comment"># Install as MCP server</span>
+<span class="t-prompt">$ </span><span class="t-cmd">git clone</span> https://github.com/bababoi-bibilabu/agent-mq ~/.agent-mq
+
+<span class="t-comment"># Add to ~/.claude/mcp.json:</span>
+{
+  <span class="t-str">"mcpServers"</span>: {
+    <span class="t-str">"agent-mq"</span>: {
+      <span class="t-str">"command"</span>: <span class="t-str">"python3"</span>,
+      <span class="t-str">"args"</span>: [<span class="t-str">"~/.agent-mq/skills/mq/scripts/mcp_server.py"</span>]
+    }
+  }
+}
+
+<span class="t-comment"># Then use MCP tools: mq_add, mq_send, mq_recv, mq_ls</span></pre>
+            </div>
+            <div id="tab-codex" class="install-panel">
+                <pre><span class="t-comment"># Install as skill</span>
+<span class="t-prompt">$ </span><span class="t-cmd">git clone</span> https://github.com/bababoi-bibilabu/agent-mq ~/.agent-mq
+<span class="t-prompt">$ </span><span class="t-cmd">ln</span> -sf ~/.agent-mq/skills/mq ~/.agents/skills/mq
+
+<span class="t-comment"># Codex will read SKILL.md and use the mq command</span>
+<span class="t-prompt">$ </span><span class="t-cmd">mq add</span> backend
+<span class="t-comment">added backend</span></pre>
+            </div>
+        </div>
+
+        <div class="features">
+            <div class="feature">
+                <div class="feature-icon">01</div>
+                <h3>Cross-tool</h3>
+                <p>Claude Code, Codex, Cursor, or anything that can run a bash command</p>
+            </div>
+            <div class="feature">
+                <div class="feature-icon">02</div>
+                <h3>Zero dependencies</h3>
+                <p>Pure Python 3 stdlib for local mode. No packages, no setup</p>
+            </div>
+            <div class="feature">
+                <div class="feature-icon">03</div>
+                <h3>Local + Cloud</h3>
+                <p>File-based by default. One command to switch to cloud for cross-machine</p>
+            </div>
+            <div class="feature">
+                <div class="feature-icon">04</div>
+                <h3>MCP native</h3>
+                <p>8 MCP tools for direct integration. No CLI wrapping needed</p>
+            </div>
+        </div>
+
+        <div class="stats" id="stats" style="display:none">
+            <div class="stat">
+                <div class="stat-num" id="stat-users">-</div>
+                <div class="stat-label">users</div>
+            </div>
+            <div class="stat">
+                <div class="stat-num" id="stat-agents">-</div>
+                <div class="stat-label">agents</div>
+            </div>
+            <div class="stat">
+                <div class="stat-num" id="stat-messages">-</div>
+                <div class="stat-label">messages</div>
+            </div>
+        </div>
+
+        <div class="api">
+            <h2>Cloud API</h2>
+            <table class="api-table">
+                <tr><td class="method post">POST</td><td class="path">/api/v1/register</td><td class="desc">create account</td></tr>
+                <tr><td class="method post">POST</td><td class="path">/api/v1/agents</td><td class="desc">add agent</td></tr>
+                <tr><td class="method post">POST</td><td class="path">/api/v1/send</td><td class="desc">send message</td></tr>
+                <tr><td class="method">GET</td><td class="path">/api/v1/recv/{name}</td><td class="desc">receive messages</td></tr>
+                <tr><td class="method">GET</td><td class="path">/api/v1/agents</td><td class="desc">list agents</td></tr>
+                <tr><td class="method">GET</td><td class="path">/api/v1/history</td><td class="desc">message history</td></tr>
+                <tr><td class="method">GET</td><td class="path">/healthz</td><td class="desc">health check</td></tr>
+            </table>
+        </div>
+
+        <div class="cloud">
+            <h2>Go cloud in 10 seconds</h2>
+            <div class="sub">Cross-machine messaging with token auth and per-user isolation</div>
+            <pre><span class="t-prompt">$ </span><span class="t-cmd">mq register</span> <span class="t-flag">--server</span> https://api.agent-mq.com
+<span class="t-comment">registered. token: fcb25e90-b7a2-...</span>
+<span class="t-comment">save this token — you'll need it to login again.</span>
+
+<span class="t-prompt">$ </span><span class="t-cmd">mq add</span> backend
+<span class="t-comment">added backend [cloud]</span></pre>
+        </div>
+
+        <footer>
+            <span>MIT License</span>
+            <div class="footer-links">
+                <a href="https://github.com/bababoi-bibilabu/agent-mq">GitHub</a>
+                <a href="https://github.com/bababoi-bibilabu/agent-mq#install">Install</a>
+            </div>
+        </footer>
+    </div>
+    <script>
+        function showTab(id) {
+            document.querySelectorAll('.install-panel').forEach(p => p.classList.remove('active'));
+            document.querySelectorAll('.install-tab').forEach(t => t.classList.remove('active'));
+            document.getElementById('tab-' + id).classList.add('active');
+            event.target.classList.add('active');
+        }
+
+        fetch('https://api.agent-mq.com/api/v1/stats')
+            .then(r => r.json())
+            .then(d => {
+                document.getElementById('stat-users').textContent = d.users.toLocaleString();
+                document.getElementById('stat-agents').textContent = d.agents.toLocaleString();
+                document.getElementById('stat-messages').textContent = d.messages.toLocaleString();
+                document.getElementById('stats').style.display = 'grid';
+            })
+            .catch(() => {});
+    </script>
+</body>
+</html>

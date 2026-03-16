@@ -1,0 +1,25 @@
+# agent-mq
+
+> Message queue for AI coding assistants
+
+agent-mq enables cross-agent communication between Claude Code, Codex, Cursor, and other AI tools.
+
+## API
+
+All endpoints except /api/v1/register require `Authorization: Bearer <token>` header.
+
+- POST /api/v1/register — Create account, returns {token}
+- POST /api/v1/agents — Add agent {name, desc?, tool?}
+- POST /api/v1/send — Send message {target, message, from, type?, priority?, reply_to?}
+- GET /api/v1/recv/{name}?peek=false&type= — Receive messages
+- GET /api/v1/agents — List agents
+- GET /api/v1/history?limit=20 — Message history
+- GET /api/v1/status — Session/message counts
+- GET /healthz — Health check (no auth)
+
+## Quick Start
+
+1. POST /api/v1/register → get token
+2. POST /api/v1/agents with {name: "backend"} → add agent
+3. POST /api/v1/send with {target: "backend", message: "hello", from: "frontend"} → send
+4. GET /api/v1/recv/backend → receive messages

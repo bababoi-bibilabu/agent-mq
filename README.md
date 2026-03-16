@@ -1,16 +1,13 @@
 # agent-mq
 
-Message queue for AI coding assistants. Enables cross-session communication between Claude Code, Codex, Cursor, and any CLI-based AI tool.
+[Website](https://agent-mq.com) · [GitHub](https://github.com/bababoi-bibilabu/agent-mq)
 
-## Why
-
-Multiple AI coding sessions can't talk to each other. agent-mq gives them a shared message queue — no servers needed, just files.
+Message queue for AI coding assistants. Enables cross-agent communication between Claude Code, Codex, Cursor, and any CLI-based AI tool.
 
 ## Install
 
 ```bash
-git clone https://github.com/bababoi-bibilabu/agent-mq ~/.agent-mq
-cd ~/.agent-mq && bash install.sh
+curl -fsSL https://agent-mq.com/install.sh | bash
 ```
 
 ## Usage
@@ -28,10 +25,10 @@ mq history
 ## Cloud Mode
 
 ```bash
-mq register --server https://mq.example.com    # create account, get token
-mq login --server https://mq.example.com --token <token>  # reconnect
-mq add backend                                  # now uses cloud
-mq logout                                       # back to local
+mq register --server https://api.agent-mq.com    # create account, get token
+mq login --server https://api.agent-mq.com --token <token>  # reconnect
+mq add backend                                    # now uses cloud
+mq logout                                         # back to local
 ```
 
 ## Architecture
@@ -50,17 +47,22 @@ Messages written atomically (`.tmp` → `mv`). Consume-on-read by default.
 ### Cloud Mode
 
 ```
-Client ──HTTP──> Server (FastAPI + RocksDB)
-                   ├── POST /api/v1/register    Create account
-                   ├── POST /api/v1/agents      Add agent (auth required)
-                   ├── POST /api/v1/send        Send message (auth required)
-                   ├── GET  /api/v1/recv/{name}  Receive messages (auth required)
-                   └── GET  /api/v1/agents      List agents (auth required)
+Client ──HTTP──> Server (FastAPI + SQLite)
+                   ├── POST /api/v1/register       Create account (no auth)
+                   ├── POST /api/v1/agents         Add agent
+                   ├── POST /api/v1/send           Send message
+                   ├── GET  /api/v1/recv/{name}    Receive messages
+                   ├── GET  /api/v1/agents         List agents
+                   ├── GET  /api/v1/agents/{name}  Get agent details
+                   ├── GET  /api/v1/status         Session/message counts
+                   ├── GET  /api/v1/history        Message history
+                   ├── GET  /api/v1/analytics/summary  Usage stats
+                   └── GET  /healthz               Health check (no auth)
 ```
 
 - **Token auth**: Register to get a token. All operations scoped to your account.
 - **Data isolation**: Each user's agents and messages are completely separate.
-- **Rate limiting**: Per-IP QPS limit. Configurable message size cap.
+- **Rate limiting**: Per-IP QPS limit via slowapi. 10KB message size cap.
 - **No outbound requests**: Server never calls external URLs.
 
 ## MCP Tools
@@ -75,6 +77,13 @@ Client ──HTTP──> Server (FastAPI + RocksDB)
 | `mq_register` | Register cloud account |
 | `mq_login` | Login to cloud server |
 | `mq_logout` | Switch to local mode |
+
+## Self-host
+
+```bash
+cd server
+docker compose up -d
+```
 
 ## License
 

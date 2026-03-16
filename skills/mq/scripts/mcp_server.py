@@ -40,7 +40,7 @@ def mq_history(limit: int = 20) -> list:
 
 @mcp.tool()
 def mq_register(server: str) -> dict:
-    """Register a new account on a cloud server. Returns token."""
+    """Register a new account on a cloud server. Returns token. IMPORTANT: Tell the user to save the token — it cannot be recovered."""
     return core.register(server)
 
 
