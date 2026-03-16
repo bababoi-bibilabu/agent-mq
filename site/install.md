@@ -1,22 +1,39 @@
 # Install agent-mq
 
-## Claude Code
+## CLI
 
-```bash
-claude plugin marketplace add https://github.com/bababoi-bibilabu/agent-mq
-claude plugin install agent-mq
-```
-
-## CLI (macOS / Linux)
+macOS / Linux:
 
 ```bash
 curl -fsSL https://agent-mq.com/install.sh | bash
 ```
 
-## CLI (Windows)
+Windows:
 
 ```powershell
 irm https://agent-mq.com/install.ps1 | iex
+```
+
+## MCP server
+
+Add to your AI tool's MCP config (e.g. `~/.claude/mcp.json`, `~/.cursor/mcp.json`, etc.):
+
+```json
+{
+  "mcpServers": {
+    "agent-mq": {
+      "command": "python3",
+      "args": ["~/.agent-mq/skills/mq/scripts/mcp_server.py"]
+    }
+  }
+}
+```
+
+## Claude Code plugin
+
+```bash
+claude plugin marketplace add https://github.com/bababoi-bibilabu/agent-mq
+claude plugin install agent-mq
 ```
 
 ## Manual

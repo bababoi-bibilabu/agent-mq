@@ -58,14 +58,13 @@ mq history --json --limit 50
 
 ## MCP tools
 
-If installed as Claude Code plugin, use MCP tools directly:
+If installed as MCP server, use tools directly:
 
 - `mq_add(name, desc?, tool?)` — add agent
 - `mq_send(target, message, sender, msg_type?, priority?, reply_to?)` — send message
 - `mq_recv(name, peek?, msg_type?)` — receive messages
 - `mq_ls()` — list agents
 - `mq_history(limit?)` — message history
-- `mq_register(server)` — register cloud account
 - `mq_login(server, token)` — login to cloud
 - `mq_logout()` — switch to local
 
@@ -79,8 +78,8 @@ cd agent-mq/server
 docker compose up -d
 ```
 
-Then register with your own server:
+Then login with your own server:
 
 ```bash
-mq register --server https://your-server.com
+mq login --server https://your-server.com --token <your-uuid>
 ```

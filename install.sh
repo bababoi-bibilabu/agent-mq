@@ -25,25 +25,6 @@ if [[ ":$PATH:" != *":$BIN_DIR:"* ]]; then
     echo "     export PATH=\"\$HOME/.local/bin:\$PATH\""
 fi
 
-# ── Link skill for AI tools ──
-if [ -d "$HOME/.claude" ]; then
-    SKILL_TARGET="$HOME/.claude/skills/mq"
-    if [ ! -e "$SKILL_TARGET" ]; then
-        mkdir -p "$HOME/.claude/skills"
-        ln -sf "$SCRIPT_DIR/skills/mq" "$SKILL_TARGET"
-        echo "[ok] Claude Code skill linked"
-    fi
-fi
-
-if [ -d "$HOME/.agents" ]; then
-    SKILL_TARGET="$HOME/.agents/skills/mq"
-    if [ ! -e "$SKILL_TARGET" ]; then
-        mkdir -p "$HOME/.agents/skills"
-        ln -sf "$SCRIPT_DIR/skills/mq" "$SKILL_TARGET"
-        echo "[ok] Codex skill linked"
-    fi
-fi
-
 # ── Done ──
 echo ""
 echo "================================"
@@ -52,7 +33,16 @@ echo ""
 echo "Next: generate a UUID and login:"
 echo "  mq login --server https://api.agent-mq.com --token YOUR_UUID"
 echo ""
-echo "Then:"
-echo "  mq add backend"
-echo "  mq send backend 'hi' --from frontend"
-echo "  mq recv backend"
+echo "To add MCP server to your AI tool, add to its MCP config:"
+echo "  {"
+echo "    \"mcpServers\": {"
+echo "      \"agent-mq\": {"
+echo "        \"command\": \"python3\","
+echo "        \"args\": [\"$MQ_SCRIPT\"]"
+echo "      }"
+echo "    }"
+echo "  }"
+echo ""
+echo "Or install as Claude Code plugin:"
+echo "  claude plugin marketplace add https://github.com/bababoi-bibilabu/agent-mq"
+echo "  claude plugin install agent-mq"
