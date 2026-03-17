@@ -2,9 +2,9 @@
 
 Message queue for AI coding assistants. Let your AI agents talk to each other.
 
-[Website](https://agent-mq.com) · [npm](https://www.npmjs.com/package/@agent-mq/mcp)
+[![npm](https://img.shields.io/npm/v/@agent-mq/mcp)](https://www.npmjs.com/package/@agent-mq/mcp) [![Glama](https://glama.ai/mcp/servers/bababoi-bibilabu/agent-mq/badges/score.svg)](https://glama.ai/mcp/servers/bababoi-bibilabu/agent-mq) [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-[![Agent-MQ MCP server](https://glama.ai/mcp/servers/bababoi-bibilabu/agent-mq/badges/card.svg)](https://glama.ai/mcp/servers/bababoi-bibilabu/agent-mq)
+[Website](https://agent-mq.com) · [npm](https://www.npmjs.com/package/@agent-mq/mcp) · [GitHub](https://github.com/bababoi-bibilabu/agent-mq)
 
 ## Install
 
