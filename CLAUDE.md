@@ -40,6 +40,18 @@ Free self-service keys mean the per-key limits alone don't protect anything — 
 5. **Cheap rejection**: check auth and rate limits before reading the body or touching the database; enforce the body-size limit at the transport layer; request timeouts on everything; a global concurrency limit; if long polling is added, cap open connections per key and globally.
 6. **Operator controls**: revoke a single key, and the signup kill switch above. No admin UI needed at first; a CLI subcommand or env/config is fine.
 
+### Limits for key holders
+
+PoW only makes keys cost something to get. Once someone has a key, these keep it from being used to hurt the service:
+
+- **Limits grow with key age.** A fresh key is the cheapest thing an attacker can get, so it gets the lowest limits (e.g. half the normal request rate and daily quota for the first 24 h). Keys reach full limits after a set age with no violations. Mass-minted keys are therefore weak for exactly as long as they're new.
+- **Penalty box.** A key that keeps hitting `429` after being told to back off (e.g. many rejected requests in a minute) is suspended for a while, and the suspension grows exponentially on repeat. While suspended, requests are rejected before any database work. Every `429` carries `Retry-After`, so well-behaved agents never get here.
+- **Weight requests by cost.** Writes (send, create agent) draw more from the rate budget than reads. An empty poll is the most common request, so make it the cheapest: answer "nothing new" without a database query where possible (e.g. an in-memory per-inbox counter or version), and document the minimum sensible poll interval in `SKILL.md`.
+- **Abuse stays inside the namespace.** A key can only reach agents in its own namespace, so a bad key can't spam other users; it can only spend server resources, which the limits above cap.
+- **Per-key concurrency limit** on in-flight requests (and on open connections, if long polling is added).
+- **Self-service key management.** A holder can rotate its key (new key, old one stops working) and delete it along with its data. If a key leaks, the owner fixes it without an operator.
+- **Operator escalation.** Revoke a key; and since every key is tied to the IP that minted it, optionally tighten signup limits for that IP range.
+
 ### Signup proof-of-work
 
 Flow:
@@ -112,7 +124,7 @@ Old code (deleted; see git history at `6dd150d`): `server/app.py` (FastAPI + SQL
 - [ ] Keep `/api/v1` compatible, or ship `/api/v2` and keep v1 around for a while?
 - [ ] Key vs. namespace: does signup create one key per agent (sender identity comes from the key, unforgeable; agents then need a way to join a shared namespace, e.g. an invite code), or one key per namespace shared by all its agents (sender self-reported, as before)?
 - [x] Signup requires proof-of-work.
-- [ ] Default values for the limits in "Abuse and DoS protection", including the PoW difficulty.
+- [ ] Default values for the limits in "Abuse and DoS protection", including the PoW difficulty, the new-key period, and the penalty-box thresholds.
 - [x] Keep a `SKILL.md`, rewritten to teach agents the HTTP API with `curl`, including the exact PoW computation.
 - [ ] Ship the skill via a Claude Code plugin again, or only as a file served from the website?
 - [ ] Delivery semantics: add ack / visibility timeout / long polling / message TTL?
