@@ -53,7 +53,13 @@ Rules:
 - Short expiry (e.g. 5 minutes).
 - Verification is a single hash, cheap enough that verifying bad submissions is never the bottleneck.
 - Difficulty is configurable. Default target: about 1–2 s of single-core CPU in Python's `hashlib` (roughly 20–22 bits). It may later scale up automatically when the global signup rate is high; keep the code ready for that, but don't build it until needed.
-- Agents have no PoW solver built into `curl`. The docs must ship a copy-paste solver that runs with only `python3` (standard library), next to the `curl` calls; test that exact snippet against the server in CI. A native solver (e.g. a tiny Rust CLI) is optional, later.
+- **`SKILL.md` spells out exactly what to compute**, so any agent can implement the solver itself in whatever it has at hand. Specify it unambiguously:
+  - input bytes: the UTF-8 bytes of `challenge + ":" + nonce`, where `challenge` is the string exactly as returned and `nonce` is a non-negative integer written in decimal ASCII with no leading zeros;
+  - hash: SHA-256 over those bytes;
+  - success: at least `difficulty` leading zero bits, counted from the most significant bit of the first byte of the digest;
+  - what to send back, and the error returned for a wrong, expired, or reused solution.
+- `SKILL.md` also includes a worked test vector (challenge, difficulty, a valid nonce, its digest in hex) and a short reference solver using only the `python3` standard library. Server tests verify both against the real implementation, so the docs can't drift.
+- A native solver (e.g. a tiny Rust CLI) is optional, later.
 
 Tests must cover each limit: hitting it returns `429` (or `413` for size) with a clear JSON error, and it resets as specified.
 
@@ -94,7 +100,7 @@ Old code (deleted; see git history at `6dd150d`): `server/app.py` (FastAPI + SQL
 - Define the message format and API request/response shapes once (single schema source); external docs are generated from it or kept consistent with it.
 - Every endpoint must be callable with a single `curl` command, and the docs show a `curl` example for each — that's how agents learn to use the service.
 - Keep the version number in one place; anything else is synced by script or build.
-- Update all user-facing docs (README, `site/*.md`, SKILL.md) together with the implementation; leave no stale instructions.
+- Update all user-facing docs (README, `site/*.md`, `SKILL.md`) together with the implementation; leave no stale instructions. `SKILL.md` is the primary doc for agents: it must be complete enough to go from zero to sending a message with nothing else.
 - Never commit secrets, tokens, or database files under `server/data/`.
 - Keep dependencies minimal; justify any new dependency before adding it.
 
@@ -107,7 +113,8 @@ Old code (deleted; see git history at `6dd150d`): `server/app.py` (FastAPI + SQL
 - [ ] Key vs. namespace: does signup create one key per agent (sender identity comes from the key, unforgeable; agents then need a way to join a shared namespace, e.g. an invite code), or one key per namespace shared by all its agents (sender self-reported, as before)?
 - [x] Signup requires proof-of-work.
 - [ ] Default values for the limits in "Abuse and DoS protection", including the PoW difficulty.
-- [ ] Keep the Claude Code plugin + `skills/mq/SKILL.md` (rewritten to teach agents to call the API with `curl`), or delete them too?
+- [x] Keep a `SKILL.md`, rewritten to teach agents the HTTP API with `curl`, including the exact PoW computation.
+- [ ] Ship the skill via a Claude Code plugin again, or only as a file served from the website?
 - [ ] Delivery semantics: add ack / visibility timeout / long polling / message TTL?
 - [ ] Website: what goes into the new `site/`? Keep the same deploy target (Cloudflare Pages)?
 
