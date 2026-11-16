@@ -13,6 +13,34 @@ Core model:
 - Receivers **poll** for messages; reading consumes them. There is no push.
 - **No MCP.** The only interface is an HTTP API; agents call it directly with `curl` or any HTTP client.
 - One auth mechanism only: a server-issued **API key**, sent as `Authorization: Bearer <api_key>`. No OAuth, sessions, or cookies.
+- **Agents get keys themselves, for free**: an unauthenticated signup endpoint mints a key; no human, email, or payment in the loop. Because anyone can mint keys, abuse limits are part of the core design (see "Abuse and DoS protection"), not an afterthought.
+- Written in **Rust**.
+
+## Tech stack
+
+- Rust (stable), single binary, one Cargo crate until there's a real reason to split.
+- Proposed: `tokio` + `axum` for HTTP, `tower` / `tower-http` layers for limits and timeouts, SQLite for storage. Confirm with the user before swapping any of these.
+- API keys: 32+ random bytes from a CSPRNG, with a recognizable prefix (e.g. `amq_`). Store only the SHA-256 of the key. Keys are high-entropy, so a fast hash is correct here; a slow password hash (argon2/bcrypt) would turn every authenticated request into a CPU DoS vector.
+
+## Abuse and DoS protection
+
+Free self-service keys mean the per-key limits alone don't protect anything — an attacker just mints more keys. Defend in layers; every limit is a config value (env var) with the defaults below as starting points:
+
+1. **Signup is the choke point.**
+   - Rate-limit signup per client IP (IPv6 grouped by /64), e.g. 5 keys/hour/IP, plus a global cap on new keys per hour.
+   - Behind Fly, take the client IP from `Fly-Client-IP`; never trust `X-Forwarded-For` or other client-supplied headers when not behind a known proxy.
+   - Keep a switch to disable signup entirely without a redeploy.
+   - Proof-of-work on signup is an optional later step; don't add it unless per-IP limits prove insufficient, because it makes the "just `curl` it" flow harder.
+2. **Per-key quotas** bound what one key can cost:
+   - request rate (token bucket, e.g. 10 req/s, burst 20) and a daily message quota;
+   - max agents per namespace, max pending messages per inbox, max message size (e.g. 10 KB);
+   - message TTL for undelivered messages and capped history, so storage per key has a hard ceiling.
+3. **Per-IP request rate limit** on all endpoints, so many keys from one IP don't multiply throughput.
+4. **Bounded storage overall**: keys with no activity for N days (e.g. 30) are deleted along with their data. Total storage ≤ live keys × per-key ceiling, and live keys are bounded by the signup limits.
+5. **Cheap rejection**: check auth and rate limits before reading the body or touching the database; enforce the body-size limit at the transport layer; request timeouts on everything; a global concurrency limit; if long polling is added, cap open connections per key and globally.
+6. **Operator controls**: revoke a single key, and the signup kill switch above. No admin UI needed at first; a CLI subcommand or env/config is fine.
+
+Tests must cover each limit: hitting it returns `429` (or `413` for size) with a clear JSON error, and it resets as specified.
 
 ## External contracts to keep
 
@@ -35,7 +63,7 @@ These are published and depended on by external users or config. Deleting the ol
 Old code (deleted; see git history at `6dd150d`): `server/app.py` (FastAPI + SQLite, single file), `mcp/src/*.ts` (MCP server + HTTP client), `site/` (static site on Cloudflare Pages), `.github/workflows/` (CI + tag-triggered release).
 
 1. **Sender is spoofable**: `sender` in `mq_send` is whatever the caller says; the server doesn't check it.
-2. **Token is the user ID, stored in plaintext**, and any string of 16+ chars is auto-registered as a new user. The new version issues API keys server-side and stores only hashes.
+2. **Token is the user ID, stored in plaintext**, and any string of 16+ chars is auto-registered as a new user. The new version issues API keys server-side, stores only hashes, and rate-limits issuance.
 3. **Cross-tenant data leak**: `/api/v1/analytics/summary` returns global stats to any token.
 4. **recv is not atomic**: select-then-delete, so concurrent recvs can double-deliver; type filtering happens in Python.
 5. **No expiry or cleanup**: inbox, done, and analytics tables have no TTL or cap; `history`'s `limit` is unbounded.
@@ -57,11 +85,12 @@ Old code (deleted; see git history at `6dd150d`): `server/app.py` (FastAPI + SQL
 
 ## Open decisions (confirm with the user before the rewrite)
 
-- [ ] Server language / framework: stay on Python + FastAPI, or switch?
-- [ ] Storage: stay on SQLite (Fly volume), or something else?
+- [x] Language: Rust.
+- [x] API keys: self-service signup by agents, free.
+- [ ] Rust stack: confirm `axum` + `tokio` + SQLite (see "Tech stack").
 - [ ] Keep `/api/v1` compatible, or ship `/api/v2` and keep v1 around for a while?
-- [ ] How are API keys issued (open signup endpoint / generated on the website / issued manually by an admin)? Can a namespace have multiple keys, and can keys be revoked?
-- [ ] Sender identity: one key per agent (sender determined by the key, unforgeable), or one key per namespace with the sender still self-reported?
+- [ ] Key vs. namespace: does signup create one key per agent (sender identity comes from the key, unforgeable; agents then need a way to join a shared namespace, e.g. an invite code), or one key per namespace shared by all its agents (sender self-reported, as before)?
+- [ ] Default values for the limits in "Abuse and DoS protection".
 - [ ] Keep the Claude Code plugin + `skills/mq/SKILL.md` (rewritten to teach agents to call the API with `curl`), or delete them too?
 - [ ] Delivery semantics: add ack / visibility timeout / long polling / message TTL?
 - [ ] Website: what goes into the new `site/`? Keep the same deploy target (Cloudflare Pages)?
