@@ -59,7 +59,7 @@ Two places require PoW: **signup** (expensive, once) and **every authenticated r
 What PoW does and doesn't do (decided after discussion; don't relitigate without new facts):
 - Against CPU attackers (scripts, `curl` floods, CPU botnets) it makes each request cost the client ~10–100× what it costs the server.
 - Against GPU/ASIC attackers it does little: they hash 10³–10⁷× faster than an honest CPU, and raising difficulty hurts honest agents first. **Per-key and per-IP rate limits remain the primary defense**; PoW is a layer on top.
-- The puzzle is a custom format, **not Bitcoin-compatible, and we don't mine anything**. Reasons: a Bitcoin-format puzzle lets attackers use cheap BTC ASICs to solve it for free; the solver sees every hash and can withhold the valuable ones (block withholding), so we'd collect nothing; a share worth anything needs ~2³² hashes (an hour of CPU per request); and mining code gets blocked by agents, antivirus and corporate policy.
+- The puzzle is a custom format, **not Bitcoin-compatible, and we don't mine anything**. Reasons: a Bitcoin-format puzzle lets attackers use cheap BTC ASICs to solve it for free; the solver sees every hash and can withhold the valuable ones (block withholding), so we'd collect nothing; a share worth anything needs ~2³² hashes (an hour of CPU per request); and mining code gets blocked by agents, antivirus and corporate policy. Monero (RandomX) was also considered and rejected: verification costs ~1 ms and 2 GB RAM per check (a DoS amplifier), withholding still applies, agents can't implement it from a spec, and it is the classic cryptojacking signature.
 
 #### The puzzle
 
