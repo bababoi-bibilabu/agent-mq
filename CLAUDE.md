@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-> Status: **being rewritten**. The old implementation (v0.2.0) will be deleted entirely and rebuilt from scratch. This file lands before the new code and is the source of constraints for the rewrite.
+> Status: **being rewritten from scratch**. The old implementation (v0.2.0) has been deleted from the tree; it is still in git history (last commit before deletion: `6dd150d`) if you need to look something up. This file is the source of constraints for the rewrite.
 > Once the new layout is settled, fill in "Repository layout" and "Common commands", and remove items from "Open decisions" as they get decided.
 
 ## What this project is
@@ -16,7 +16,7 @@ Core model:
 
 ## External contracts to keep
 
-These are published and depended on by external users or config. Don't change them casually; any change needs the user's approval and a migration plan:
+These are published and depended on by external users or config. Deleting the old code did not take them down (the site and API are still deployed). Don't change them casually; any change needs the user's approval and a migration plan:
 
 | Contract | Current value |
 |---|---|
@@ -24,15 +24,15 @@ These are published and depended on by external users or config. Don't change th
 | Hosted API | Fly.io app `agent-mq-api`, `Authorization: Bearer <token>` |
 | CI secret names | `FLY_API_TOKEN`, `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID` |
 
-### Dropped (delete during the rewrite)
+### Dropped
 
-- The MCP server: `mcp/`, `.mcp.json`, root `Dockerfile`, `glama.json`, and the npm / Glama badges in README.
+- The MCP server and everything around it (`mcp/`, `.mcp.json`, root `Dockerfile`, `glama.json`, npm / Glama badges) — already deleted; don't bring them back.
 - The npm package `@agent-mq/mcp` gets no new releases (whether to mark it deprecated on npm is the user's call); the `NPM_TOKEN` CI secret is no longer used.
 - The `mq_*` MCP tool names and the local config `~/.agent-mq/config.json` go away.
 
 ## Lessons from the old implementation (fix in the rewrite)
 
-Old code: `server/app.py` (FastAPI + SQLite, single file), `mcp/src/*.ts` (MCP server + HTTP client, now dropped), `site/` (static site on Cloudflare Pages).
+Old code (deleted; see git history at `6dd150d`): `server/app.py` (FastAPI + SQLite, single file), `mcp/src/*.ts` (MCP server + HTTP client), `site/` (static site on Cloudflare Pages), `.github/workflows/` (CI + tag-triggered release).
 
 1. **Sender is spoofable**: `sender` in `mq_send` is whatever the caller says; the server doesn't check it.
 2. **Token is the user ID, stored in plaintext**, and any string of 16+ chars is auto-registered as a new user. The new version issues API keys server-side and stores only hashes.
@@ -64,11 +64,13 @@ Old code: `server/app.py` (FastAPI + SQLite, single file), `mcp/src/*.ts` (MCP s
 - [ ] Sender identity: one key per agent (sender determined by the key, unforgeable), or one key per namespace with the sender still self-reported?
 - [ ] Keep the Claude Code plugin + `skills/mq/SKILL.md` (rewritten to teach agents to call the API with `curl`), or delete them too?
 - [ ] Delivery semantics: add ack / visibility timeout / long polling / message TTL?
-- [ ] Rebuild `site/` as well? Keep the same deploy target (Cloudflare Pages)?
+- [ ] Website: what goes into the new `site/`? Keep the same deploy target (Cloudflare Pages)?
 
 ## Repository layout
 
-_TBD — fill in once the new layout is settled._
+Currently only `CLAUDE.md`, `LICENSE` (MIT), and `.gitignore` (still has old entries like `mcp/dist/`; clean up when the new layout lands). No CI workflows exist yet.
+
+_Fill in once the new layout is settled._
 
 ## Common commands
 

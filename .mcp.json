@@ -1,6 +1,0 @@
-{
-  "agent-mq": {
-    "command": "npx",
-    "args": ["--yes", "--package", "@agent-mq/mcp", "--", "agent-mq-mcp"]
-  }
-}
