@@ -30,7 +30,7 @@ Free self-service keys mean the per-key limits alone don't protect anything — 
    - Rate-limit signup per client IP (IPv6 grouped by /64), e.g. 5 keys/hour/IP, plus a global cap on new keys per hour.
    - Behind Fly, take the client IP from `Fly-Client-IP`; never trust `X-Forwarded-For` or other client-supplied headers when not behind a known proxy.
    - Keep a switch to disable signup entirely without a redeploy.
-   - Proof-of-work on signup is an optional later step; don't add it unless per-IP limits prove insufficient, because it makes the "just `curl` it" flow harder.
+   - **Proof-of-work is required for signup** (hashcash-style), on top of the IP limits. See "Signup proof-of-work" below.
 2. **Per-key quotas** bound what one key can cost:
    - request rate (token bucket, e.g. 10 req/s, burst 20) and a daily message quota;
    - max agents per namespace, max pending messages per inbox, max message size (e.g. 10 KB);
@@ -39,6 +39,21 @@ Free self-service keys mean the per-key limits alone don't protect anything — 
 4. **Bounded storage overall**: keys with no activity for N days (e.g. 30) are deleted along with their data. Total storage ≤ live keys × per-key ceiling, and live keys are bounded by the signup limits.
 5. **Cheap rejection**: check auth and rate limits before reading the body or touching the database; enforce the body-size limit at the transport layer; request timeouts on everything; a global concurrency limit; if long polling is added, cap open connections per key and globally.
 6. **Operator controls**: revoke a single key, and the signup kill switch above. No admin UI needed at first; a CLI subcommand or env/config is fine.
+
+### Signup proof-of-work
+
+Flow:
+1. `POST /signup/challenge` (no auth) → `{challenge, difficulty, expires_at}`. Rate-limited per IP like signup itself.
+2. The client finds a `nonce` such that `SHA-256(challenge || ":" || nonce)` has at least `difficulty` leading zero bits.
+3. `POST /signup` with `{challenge, nonce}` → `{api_key, ...}`.
+
+Rules:
+- Challenges are stateless: random bytes + expiry + difficulty, authenticated with an HMAC under a server secret (secret from env, never committed). The server doesn't store issued challenges.
+- Each challenge is single-use: remember redeemed challenges until they expire, so one solution can't mint many keys.
+- Short expiry (e.g. 5 minutes).
+- Verification is a single hash, cheap enough that verifying bad submissions is never the bottleneck.
+- Difficulty is configurable. Default target: about 1–2 s of single-core CPU in Python's `hashlib` (roughly 20–22 bits). It may later scale up automatically when the global signup rate is high; keep the code ready for that, but don't build it until needed.
+- Agents have no PoW solver built into `curl`. The docs must ship a copy-paste solver that runs with only `python3` (standard library), next to the `curl` calls; test that exact snippet against the server in CI. A native solver (e.g. a tiny Rust CLI) is optional, later.
 
 Tests must cover each limit: hitting it returns `429` (or `413` for size) with a clear JSON error, and it resets as specified.
 
@@ -90,7 +105,8 @@ Old code (deleted; see git history at `6dd150d`): `server/app.py` (FastAPI + SQL
 - [ ] Rust stack: confirm `axum` + `tokio` + SQLite (see "Tech stack").
 - [ ] Keep `/api/v1` compatible, or ship `/api/v2` and keep v1 around for a while?
 - [ ] Key vs. namespace: does signup create one key per agent (sender identity comes from the key, unforgeable; agents then need a way to join a shared namespace, e.g. an invite code), or one key per namespace shared by all its agents (sender self-reported, as before)?
-- [ ] Default values for the limits in "Abuse and DoS protection".
+- [x] Signup requires proof-of-work.
+- [ ] Default values for the limits in "Abuse and DoS protection", including the PoW difficulty.
 - [ ] Keep the Claude Code plugin + `skills/mq/SKILL.md` (rewritten to teach agents to call the API with `curl`), or delete them too?
 - [ ] Delivery semantics: add ack / visibility timeout / long polling / message TTL?
 - [ ] Website: what goes into the new `site/`? Keep the same deploy target (Cloudflare Pages)?
