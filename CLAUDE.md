@@ -30,7 +30,7 @@ Free self-service keys mean the per-key limits alone don't protect anything — 
    - Rate-limit signup per client IP (IPv6 grouped by /64), e.g. 5 keys/hour/IP, plus a global cap on new keys per hour.
    - Behind Fly, take the client IP from `Fly-Client-IP`; never trust `X-Forwarded-For` or other client-supplied headers when not behind a known proxy.
    - Keep a switch to disable signup entirely without a redeploy.
-   - **Proof-of-work is required for signup** (hashcash-style), on top of the IP limits. See "Signup proof-of-work" below.
+   - **Proof-of-work is required for signup**, on top of the IP limits. See "Proof-of-work" below.
 2. **Per-key quotas** bound what one key can cost:
    - request rate (token bucket, e.g. 10 req/s, burst 20) and a daily message quota;
    - max agents per namespace, max pending messages per inbox, max message size (e.g. 10 KB);
@@ -52,26 +52,54 @@ PoW only makes keys cost something to get. Once someone has a key, these keep it
 - **Self-service key management.** A holder can rotate its key (new key, old one stops working) and delete it along with its data. If a key leaks, the owner fixes it without an operator.
 - **Operator escalation.** Revoke a key; and since every key is tied to the IP that minted it, optionally tighten signup limits for that IP range.
 
-### Signup proof-of-work
+### Proof-of-work
 
-Flow:
-1. `POST /signup/challenge` (no auth) → `{challenge, difficulty, expires_at}`. Rate-limited per IP like signup itself.
-2. The client finds a `nonce` such that `SHA-256(challenge || ":" || nonce)` has at least `difficulty` leading zero bits.
-3. `POST /signup` with `{challenge, nonce}` → `{api_key, ...}`.
+Two places require PoW: **signup** (expensive, once) and **every authenticated request** (cheap, ~10 ms). Both use the same puzzle so one solver serves both.
 
-Rules:
-- Challenges are stateless: random bytes + expiry + difficulty, authenticated with an HMAC under a server secret (secret from env, never committed). The server doesn't store issued challenges.
-- Each challenge is single-use: remember redeemed challenges until they expire, so one solution can't mint many keys.
-- Short expiry (e.g. 5 minutes).
-- Verification is a single hash, cheap enough that verifying bad submissions is never the bottleneck.
-- Difficulty is configurable. Default target: about 1–2 s of single-core CPU in Python's `hashlib` (roughly 20–22 bits). It may later scale up automatically when the global signup rate is high; keep the code ready for that, but don't build it until needed.
-- **`SKILL.md` spells out exactly what to compute**, so any agent can implement the solver itself in whatever it has at hand. Specify it unambiguously:
-  - input bytes: the UTF-8 bytes of `challenge + ":" + nonce`, where `challenge` is the string exactly as returned and `nonce` is a non-negative integer written in decimal ASCII with no leading zeros;
-  - hash: SHA-256 over those bytes;
-  - success: at least `difficulty` leading zero bits, counted from the most significant bit of the first byte of the digest;
-  - what to send back, and the error returned for a wrong, expired, or reused solution.
-- `SKILL.md` also includes a worked test vector (challenge, difficulty, a valid nonce, its digest in hex) and a short reference solver using only the `python3` standard library. Server tests verify both against the real implementation, so the docs can't drift.
-- A native solver (e.g. a tiny Rust CLI) is optional, later.
+What PoW does and doesn't do (decided after discussion; don't relitigate without new facts):
+- Against CPU attackers (scripts, `curl` floods, CPU botnets) it makes each request cost the client ~10–100× what it costs the server.
+- Against GPU/ASIC attackers it does little: they hash 10³–10⁷× faster than an honest CPU, and raising difficulty hurts honest agents first. **Per-key and per-IP rate limits remain the primary defense**; PoW is a layer on top.
+- The puzzle is a custom format, **not Bitcoin-compatible, and we don't mine anything**. Reasons: a Bitcoin-format puzzle lets attackers use cheap BTC ASICs to solve it for free; the solver sees every hash and can withhold the valuable ones (block withholding), so we'd collect nothing; a share worth anything needs ~2³² hashes (an hour of CPU per request); and mining code gets blocked by agents, antivirus and corporate policy.
+
+#### The puzzle
+
+- Input bytes: UTF-8 of `seed + ":" + nonce`. `nonce` is a non-negative integer in decimal ASCII, no leading zeros.
+- Hash: SHA-256 of the input.
+- Difficulty `D` is the **expected number of hashes**, not a bit count, so it can be tuned finely. Success: the first 8 bytes of the digest, read as a big-endian `u64`, are `< floor((2^64 − 1) / D)`.
+- Keep `seed + ":" + nonce` ≤ 55 bytes so it is a single SHA-256 block; otherwise naive and optimized solvers diverge and calibration breaks. Seeds are therefore short (≤ 40 chars).
+
+#### Calibration
+
+Difficulty is calibrated against an **optimized single-core Rust solver** (hash state of the prefix computed once, no allocation in the loop). Measured on a 2.1 GHz Xeon with SHA-NI: ~14 M hashes/s (vs ~2.8 M/s for Python `hashlib`).
+
+| Use | Default `D` | Optimized Rust, 1 core | Python `hashlib` |
+|---|---|---|---|
+| Every request | 2¹⁷ = 131072 | ~9–10 ms | ~50 ms |
+| Signup | 2²⁴ ≈ 16.8 M | ~1.2 s | ~6 s |
+
+Both are config values. Re-measure on new hardware with the benchmark (to be added under the repo once the Rust project exists) rather than guessing. Difficulty may later rise automatically under load; keep the code ready for that, don't build it until needed.
+
+#### Signup flow
+
+1. `POST /signup/challenge` (no auth, IP rate-limited) → `{seed, difficulty, expires_at}`.
+2. Client solves the puzzle.
+3. `POST /signup` with `{seed, nonce}` → `{api_key, ...}`.
+
+- Seeds are stateless and short: base64url of (16 random bytes ‖ 4-byte expiry ‖ 8-byte truncated HMAC under a server secret from env, never committed). Expiry ~5 minutes.
+- Single-use: remember redeemed seeds until they expire.
+
+#### Per-request flow
+
+No extra round trip; the client derives the seed from the request itself:
+- `seed` = first 32 hex chars of SHA-256 over: `ts`, a client random `salt`, the HTTP method, the path with query, SHA-256 hex of the body, and the API key's public id — joined by `\n` in that order (exact format pinned in `SKILL.md`).
+- Client sends `X-PoW: <ts>:<salt>:<nonce>` alongside `Authorization: Bearer <api_key>`.
+- Server rejects if `ts` is outside ±60 s, if the seed was already seen within the window (replay), or if the hash misses the target. These checks run before any database work; verification is one hash plus a cache lookup.
+
+#### Documentation
+
+- **`SKILL.md` spells out exactly what to compute**, so any agent can implement the solver itself: seed construction, input bytes, target formula, header format, and the error returned for a wrong, expired, or reused solution.
+- `SKILL.md` includes worked test vectors (seed, difficulty, a valid nonce, its digest in hex) for both flows, a short reference solver using only the `python3` standard library, and the optimized Rust solver. Server tests verify all of them against the real implementation, so the docs can't drift.
+- Because every request needs PoW, plain `curl` alone is no longer enough; `SKILL.md` must show the shortest working way to compute the header and pass it to `curl`.
 
 Tests must cover each limit: hitting it returns `429` (or `413` for size) with a clear JSON error, and it resets as specified.
 
@@ -110,7 +138,7 @@ Old code (deleted; see git history at `6dd150d`): `server/app.py` (FastAPI + SQL
 - Branches: commit and push to the branch assigned for the session. Without the user asking, don't open PRs, don't push to `main`, and don't push `v*` tags (a tag triggers a release: Fly deploy + Pages deploy).
 - Write or update tests before changing the implementation; run the full test suite and make it pass before every commit.
 - Define the message format and API request/response shapes once (single schema source); external docs are generated from it or kept consistent with it.
-- Every endpoint must be callable with a single `curl` command, and the docs show a `curl` example for each — that's how agents learn to use the service.
+- Every endpoint has a `curl` example in the docs (with the PoW header computed as shown in `SKILL.md`) — that's how agents learn to use the service.
 - Keep the version number in one place; anything else is synced by script or build.
 - Update all user-facing docs (README, `site/*.md`, `SKILL.md`) together with the implementation; leave no stale instructions. `SKILL.md` is the primary doc for agents: it must be complete enough to go from zero to sending a message with nothing else.
 - Never commit secrets, tokens, or database files under `server/data/`.
@@ -123,7 +151,7 @@ Old code (deleted; see git history at `6dd150d`): `server/app.py` (FastAPI + SQL
 - [ ] Rust stack: confirm `axum` + `tokio` + SQLite (see "Tech stack").
 - [ ] Keep `/api/v1` compatible, or ship `/api/v2` and keep v1 around for a while?
 - [ ] Key vs. namespace: does signup create one key per agent (sender identity comes from the key, unforgeable; agents then need a way to join a shared namespace, e.g. an invite code), or one key per namespace shared by all its agents (sender self-reported, as before)?
-- [x] Signup requires proof-of-work.
+- [x] Proof-of-work on signup and on every request, calibrated to ~10 ms per request for optimized single-core Rust.
 - [ ] Default values for the limits in "Abuse and DoS protection", including the PoW difficulty, the new-key period, and the penalty-box thresholds.
 - [x] Keep a `SKILL.md`, rewritten to teach agents the HTTP API with `curl`, including the exact PoW computation.
 - [ ] Ship the skill via a Claude Code plugin again, or only as a file served from the website?
